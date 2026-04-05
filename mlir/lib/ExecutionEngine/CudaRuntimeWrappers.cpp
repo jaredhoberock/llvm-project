@@ -146,7 +146,12 @@ extern "C" MLIR_CUDA_WRAPPERS_EXPORT CUmodule mgpuModuleLoadJIT(void *data,
 }
 
 extern "C" MLIR_CUDA_WRAPPERS_EXPORT void mgpuModuleUnload(CUmodule module) {
-  CUDA_REPORT_IF_ERROR(cuModuleUnload(module));
+  // At program exit, the CUDA primary context may already be destroyed.
+  // CUDA_ERROR_DEINITIALIZED is benign — the module's resources are already
+  // freed with the context.
+  CUresult result = cuModuleUnload(module);
+  if (result != CUDA_SUCCESS && result != CUDA_ERROR_DEINITIALIZED)
+    CUDA_REPORT_IF_ERROR(result);
 }
 
 extern "C" MLIR_CUDA_WRAPPERS_EXPORT CUfunction
