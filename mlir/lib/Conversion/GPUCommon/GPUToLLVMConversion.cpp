@@ -1028,7 +1028,7 @@ LogicalResult LegalizeLaunchFuncOpPattern::matchAndRewrite(
         gpu::KernelDim3{adaptor.getClusterSizeX(), adaptor.getClusterSizeY(),
                         adaptor.getClusterSizeZ()};
   }
-  gpu::LaunchFuncOp::create(
+  auto newLaunchOp = gpu::LaunchFuncOp::create(
       rewriter, launchOp.getLoc(), launchOp.getKernelAttr(),
       gpu::KernelDim3{adaptor.getGridSizeX(), adaptor.getGridSizeY(),
                       adaptor.getGridSizeZ()},
@@ -1037,6 +1037,8 @@ LogicalResult LegalizeLaunchFuncOpPattern::matchAndRewrite(
       adaptor.getDynamicSharedMemorySize(),
       llvmArgumentsWithSizes.empty() ? llvmArguments : llvmArgumentsWithSizes,
       stream, clusterSize);
+  if (launchOp.getCooperative())
+    newLaunchOp.setCooperative(true);
   if (launchOp.getAsyncToken())
     rewriter.replaceOp(launchOp, {stream});
   else

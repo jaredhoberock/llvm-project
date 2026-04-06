@@ -621,6 +621,7 @@ def GPU_LaunchFuncOp :GPU_Op<"launch_func", [
                Optional<LaunchIndx>:$clusterSizeY,
                Optional<LaunchIndx>:$clusterSizeZ,
                Optional<I32>:$dynamicSharedMemorySize,
+               UnitAttr:$cooperative,
                Variadic<AnyType>:$kernelOperands,
                Optional<AnyType>:$asyncObject)>,
     Results<(outs Optional<GPU_AsyncToken>:$asyncToken)> {
@@ -662,6 +663,11 @@ def GPU_LaunchFuncOp :GPU_Op<"launch_func", [
     `clusterSizeX`, `clusterSizeY`, and `clusterSizeZ` arguments. When these
     arguments are present, the Op launches a kernel that clusters the given
     thread blocks. This feature is exclusive to certain architectures.
+
+    The `cooperative` attribute indicates that the kernel should be launched
+    cooperatively, guaranteeing that all thread blocks in the grid are
+    co-resident on the GPU simultaneously. This enables grid-wide
+    synchronization patterns.
 
     Example:
 
@@ -789,6 +795,7 @@ def GPU_LaunchFuncOp :GPU_Op<"launch_func", [
       `threads` `in` ` ` `(` $blockSizeX `,` $blockSizeY `,` $blockSizeZ `)`
       custom<LaunchDimType>(type($gridSizeX), ref($clusterSizeX), type($clusterSizeX), type($clusterSizeY), type($clusterSizeZ))
       (`dynamic_shared_memory_size` $dynamicSharedMemorySize^)?
+      (`cooperative` $cooperative^)?
       custom<LaunchFuncOperands>($kernelOperands, type($kernelOperands)) attr-dict
   }];
   let hasVerifier = 1;
@@ -805,6 +812,7 @@ def GPU_LaunchOp : GPU_Op<"launch", [
                Optional<Index>:$clusterSizeY,
                Optional<Index>:$clusterSizeZ,
                Optional<I32>:$dynamicSharedMemorySize,
+               UnitAttr:$cooperative,
                OptionalAttr<FlatSymbolRefAttr>:$module,
                OptionalAttr<FlatSymbolRefAttr>:$function)>,
     Results<(outs Optional<GPU_AsyncToken>:$asyncToken)> {
