@@ -930,8 +930,8 @@ void LaunchOp::print(OpAsmPrinter &p) {
   p.printOptionalAttrDict((*this)->getAttrs(), /*elidedAttrs=*/{
                               LaunchOp::getOperandSegmentSizeAttr(),
                               getNumWorkgroupAttributionsAttrName(),
-                              getCooperativeAttrName(),
-                              moduleAttrName, functionAttrName});
+                              getCooperativeAttrName(), moduleAttrName,
+                              functionAttrName});
 }
 
 // Parse the size assignment blocks for blocks and threads.  These have the form
