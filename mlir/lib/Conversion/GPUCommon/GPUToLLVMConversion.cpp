@@ -770,8 +770,6 @@ LogicalResult ConvertAllocOpToGpuRuntimeCallPattern::matchAndRewrite(
   if (isShared && allocOp.getAsyncToken())
     return rewriter.notifyMatchFailure(
         allocOp, "Host Shared allocation cannot be done async");
-  if (!isShared && failed(isAsyncWithOneDependency(rewriter, allocOp)))
-    return failure();
 
   // Get shape of the memref as values: static sizes are constant
   // values and dynamic sizes are passed to 'alloc' as operands.
@@ -815,18 +813,26 @@ LogicalResult ConvertAllocOpToGpuRuntimeCallPattern::matchAndRewrite(
 LogicalResult ConvertDeallocOpToGpuRuntimeCallPattern::matchAndRewrite(
     gpu::DeallocOp deallocOp, OpAdaptor adaptor,
     ConversionPatternRewriter &rewriter) const {
-  if (failed(areAllLLVMTypes(deallocOp, adaptor.getOperands(), rewriter)) ||
-      failed(isAsyncWithOneDependency(rewriter, deallocOp)))
+  if (failed(areAllLLVMTypes(deallocOp, adaptor.getOperands(), rewriter)))
     return failure();
 
   Location loc = deallocOp.getLoc();
 
   Value pointer =
       MemRefDescriptor(adaptor.getMemref()).allocatedPtr(rewriter, loc);
-  Value stream = adaptor.getAsyncDependencies().front();
+  auto nullPtr = mlir::LLVM::ZeroOp::create(rewriter, loc, llvmPointerType);
+  Value stream = adaptor.getAsyncDependencies().empty()
+                     ? nullPtr
+                     : adaptor.getAsyncDependencies().front();
   deallocCallBuilder.create(loc, rewriter, {pointer, stream});
 
-  rewriter.replaceOp(deallocOp, {stream});
+  if (deallocOp.getAsyncToken()) {
+    // Async dealloc: propagate the stream as the async token replacement.
+    rewriter.replaceOp(deallocOp, {stream});
+  } else {
+    // Sync dealloc: no results to replace, just remove the op.
+    rewriter.eraseOp(deallocOp);
+  }
   return success();
 }
 
