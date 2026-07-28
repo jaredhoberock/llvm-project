@@ -16,6 +16,7 @@ add_mlir_unittest(MLIRIRTests
   PatternMatchTest.cpp
   RemarkTest.cpp  
   ShapedTypeTest.cpp
+  SymbolReferenceContainmentTest.cpp
   SymbolTableTest.cpp
   TypeTest.cpp
   TypeAttrNamesTest.cpp
