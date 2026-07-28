@@ -18,6 +18,7 @@ include "TestDialect.td"
 include "TestAttrDefs.td"
 include "TestInterfaces.td"
 include "mlir/IR/BuiltinTypes.td"
+include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/DataLayoutInterfaces.td"
 include "mlir/Dialect/Bufferization/IR/BufferizationTypeInterfaces.td"
 
@@ -81,6 +82,14 @@ def CompoundNestedOuterTypeQual : Test_Type<"CompoundNestedOuterQual"> {
     CompoundNestedInnerType:$inner
   );
   let assemblyFormat = "`<` `i`  qualified($inner) `>`";
+}
+
+def TestSymbolUserType : Test_Type<"TestSymbolUser",
+    [DeclareTypeInterfaceMethods<SymbolUserTypeInterface>]> {
+  let mnemonic = "symbol_ref";
+  let summary = "Test type that references a symbol";
+  let parameters = (ins "::mlir::FlatSymbolRefAttr":$symbol);
+  let assemblyFormat = "`<` $symbol `>`";
 }
 
 // An example of how one could implement a standard integer.
