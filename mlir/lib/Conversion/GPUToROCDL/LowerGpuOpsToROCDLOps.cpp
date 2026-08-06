@@ -340,8 +340,13 @@ struct LowerGpuOpsToROCDLOpsPass final
       llvmDataLayout = StringAttr::get(ctx, amdgcnDataLayout);
       m->setAttr(LLVM::LLVMDialect::getDataLayoutAttrName(), llvmDataLayout);
     }
-    // Request C wrapper emission.
+    // Request C wrapper emission for externally visible functions only. A
+    // private function cannot be called from outside its module, so its C
+    // interface wrapper is unreachable and would only anchor the wrapped
+    // function against dead-code elimination.
     for (auto func : m.getOps<func::FuncOp>()) {
+      if (func.isPrivate())
+        continue;
       func->setAttr(LLVM::LLVMDialect::getEmitCWrapperAttrName(),
                     UnitAttr::get(ctx));
     }
