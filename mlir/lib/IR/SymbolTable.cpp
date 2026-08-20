@@ -493,8 +493,9 @@ namespace {
 /// operations -- at most once per scope.
 class OpTypeSymbolUseVerifier {
 public:
-  OpTypeSymbolUseVerifier(MLIRContext *ctx, SymbolTableCollection &symbolTable)
-      : cache(detail::getSymbolRefContainmentCache(ctx)) {
+  OpTypeSymbolUseVerifier(detail::SymbolRefContainmentCache &cacheArg,
+                          SymbolTableCollection &symbolTable)
+      : cache(cacheArg) {
     typeWalker.addWalk([this, &symbolTable](Type type) -> WalkResult {
       // Prune subtrees the cache proves free of any SymbolRefAttr; nothing
       // under them can carry a symbol use.
@@ -616,7 +617,9 @@ LogicalResult detail::verifySymbolTable(Operation *op) {
   // walk memo and this attribute set both hold that once-per-scope state.
   SymbolTableCollection symbolTable;
   SetVector<Attribute> verifiedAttrs;
-  OpTypeSymbolUseVerifier typeVerifier(op->getContext(), symbolTable);
+  bool isMultithreaded = op->getContext()->isMultithreadingEnabled();
+  detail::SymbolRefContainmentCache scopeCache{isMultithreaded};
+  OpTypeSymbolUseVerifier typeVerifier(scopeCache, symbolTable);
 
   auto verifySymbolUserFn = [&](Operation *op) -> std::optional<WalkResult> {
     if (SymbolUserOpInterface user = dyn_cast<SymbolUserOpInterface>(op))
