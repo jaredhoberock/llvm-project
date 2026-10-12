@@ -607,6 +607,7 @@ def LaunchIndx : AnyTypeOf<[Index, I32, I64]>;
 
 def GPU_LaunchFuncOp :GPU_Op<"launch_func", [
       GPU_AsyncOpInterface, AttrSizedOperandSegments,
+      MemoryEffects<[MemRead, MemWrite]>,
       AllTypesMatch<["gridSizeX", "gridSizeY", "gridSizeZ", "blockSizeX",
                      "blockSizeY", "blockSizeZ"]>]>,
     Arguments<(ins Variadic<GPU_AsyncToken>:$asyncDependencies,
@@ -646,6 +647,13 @@ def GPU_LaunchFuncOp :GPU_Op<"launch_func", [
     completed. If the `async` keyword is present, the host does not block but
     instead a `!gpu.async.token` is returned. Other async GPU ops can take this
     token as dependency.
+
+    The launched kernel may read and write any memory its operands reach,
+    and memory beyond them (device globals, `gpu.printf` output), so the
+    operation declares a read and a write on the default resource. These
+    are the effects of the launch's own execution. An asynchronous launch's
+    buffers must additionally stay alive until its token is awaited, which
+    these effects do not express.
 
     The operation requires at least the grid and block sizes along the x,y,z
     dimensions as arguments. When a lower-dimensional kernel is required,

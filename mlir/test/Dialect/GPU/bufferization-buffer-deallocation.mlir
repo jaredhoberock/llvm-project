@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s -buffer-deallocation-pipeline --allow-unregistered-dialect | FileCheck %s
+// RUN: mlir-opt %s -buffer-deallocation-pipeline -split-input-file --allow-unregistered-dialect | FileCheck %s
 
 func.func @gpu_launch() {
   %c1 = arith.constant 1 : index
@@ -16,3 +16,30 @@ func.func @gpu_launch() {
 //       CHECK:     [[ALLOC:%.+]] = memref.alloc(
 //       CHECK:     memref.dealloc [[ALLOC]]
 //       CHECK:     gpu.terminator
+
+// -----
+
+// A synchronous launch: the buffer it reads is freed after it. An asynchronous
+// launch is not covered; its buffers' lifetime runs to the await of its token.
+module attributes {gpu.container_module} {
+  gpu.module @kernels {
+    gpu.func @read_buffer(%arg0: memref<2xf32>) kernel {
+      gpu.return
+    }
+  }
+
+  func.func @gpu_launch_func() {
+    %c1 = arith.constant 1 : index
+    %alloc = memref.alloc() : memref<2xf32>
+    gpu.launch_func @kernels::@read_buffer
+        blocks in (%c1, %c1, %c1) threads in (%c1, %c1, %c1)
+        args(%alloc : memref<2xf32>)
+    return
+  }
+}
+
+// CHECK-LABEL: func @gpu_launch_func
+//       CHECK:   [[ALLOC:%.+]] = memref.alloc(
+//       CHECK:   gpu.launch_func
+//       CHECK:   memref.dealloc [[ALLOC]]
+//       CHECK:   return
