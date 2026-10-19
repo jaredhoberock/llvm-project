@@ -234,3 +234,30 @@ func.func private @test_alloc_with_multiple_results() -> () {
   memref.dealloc %alloc2 : memref<64xf32>
   return
 }
+
+// -----
+
+// CHECK-LABEL: func.func @alias_user_outside_alloc_block(
+// CHECK:         %[[ALLOC:.*]] = memref.alloc
+// CHECK:         %[[R:.*]] = func.call @callee(%[[ALLOC]])
+// CHECK:         memref.dealloc %[[ALLOC]]
+// CHECK:         scf.yield %[[R]]
+
+// The call's result is an alias of its operand to the buffer view flow, and the
+// scf.if yields it, so an alias of %alloc has a user (the return) outside the
+// block of %alloc. The dealloc cannot be ordered against that user and stays
+// where it is.
+func.func private @callee(%m: memref<?xf32>) -> f32
+
+func.func @alias_user_outside_alloc_block(%c: i1, %n: index) -> f32 {
+  %0 = scf.if %c -> (f32) {
+    %cst = arith.constant 0.0 : f32
+    scf.yield %cst : f32
+  } else {
+    %alloc = memref.alloc(%n) : memref<?xf32>
+    %r = func.call @callee(%alloc) : (memref<?xf32>) -> f32
+    memref.dealloc %alloc : memref<?xf32>
+    scf.yield %r : f32
+  }
+  return %0 : f32
+}

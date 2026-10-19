@@ -149,6 +149,11 @@ public:
 
           // find the ancestor of user that is in the same block as the allocOp.
           auto *topUser = allocOp->getBlock()->findAncestorOpInBlock(*user);
+          // A user outside the allocOp's block (an alias leaving it through a
+          // region's results) cannot be ordered against the dealloc op; leave
+          // the dealloc op where it is.
+          if (!topUser)
+            return WalkResult::advance();
           if (!lastUser || happensBefore(lastUser, topUser)) {
             lastUser = topUser;
           }
