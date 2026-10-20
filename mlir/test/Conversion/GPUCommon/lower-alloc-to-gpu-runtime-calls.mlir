@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s --gpu-to-llvm | FileCheck %s
+// RUN: mlir-opt %s --gpu-to-llvm -split-input-file | FileCheck %s
 
 module attributes {gpu.container_module} {
   // CHECK-LABEL: llvm.func @main
@@ -36,6 +36,20 @@ module attributes {gpu.container_module} {
     return
   }
 
+  // CHECK-LABEL: llvm.func @alloc_dealloc_address_space
+  func.func @alloc_dealloc_address_space() {
+    // CHECK: %[[allocated:.*]] = llvm.call @mgpuMemAlloc({{.*}}) : (i64, !llvm.ptr, i8) -> !llvm.ptr
+    // CHECK: %[[cast:.*]] = llvm.addrspacecast %[[allocated]] : !llvm.ptr to !llvm.ptr<1>
+    // CHECK: llvm.insertvalue %[[cast]], {{.*}}[0] : !llvm.struct<(ptr<1>, ptr<1>, i64, array<1 x i64>, array<1 x i64>)>
+    // CHECK: llvm.insertvalue %[[cast]], {{.*}}[1] : !llvm.struct<(ptr<1>, ptr<1>, i64, array<1 x i64>, array<1 x i64>)>
+    %0 = gpu.alloc () : memref<10xf32, 1>
+    // CHECK: %[[pointer:.*]] = llvm.extractvalue {{.*}}[0] : !llvm.struct<(ptr<1>, ptr<1>, i64, array<1 x i64>, array<1 x i64>)>
+    // CHECK: %[[generic:.*]] = llvm.addrspacecast %[[pointer]] : !llvm.ptr<1> to !llvm.ptr
+    // CHECK: llvm.call @mgpuMemFree(%[[generic]], {{.*}}) : (!llvm.ptr, !llvm.ptr) -> ()
+    gpu.dealloc %0 : memref<10xf32, 1>
+    return
+  }
+
   // CHECK-LABEL: llvm.func @alloc_sync
   // CHECK-SAME: %[[size:.*]]: i64
   func.func @alloc_sync(%size : index) {
@@ -51,6 +65,26 @@ module attributes {gpu.container_module} {
     // CHECK: llvm.call @mgpuStreamSynchronize(%[[stream]])
     // CHECK: llvm.call @mgpuStreamDestroy(%[[stream]])
     gpu.wait [%2]
+    return
+  }
+}
+
+// -----
+
+// More than one async dependency is not supported; the alloc and dealloc
+// should be left unconverted.
+module attributes {gpu.container_module} {
+  // CHECK-LABEL: func @multi_dep_unsupported
+  func.func @multi_dep_unsupported(%size : index) {
+    %t1 = gpu.wait async
+    %t2 = gpu.wait async
+    // CHECK: gpu.alloc async [{{.*}}, {{.*}}]
+    // CHECK-NOT: mgpuMemAlloc
+    %buf, %t3 = gpu.alloc async [%t1, %t2] (%size) : memref<?xf32>
+    // CHECK: gpu.dealloc async [{{.*}}, {{.*}}]
+    // CHECK-NOT: mgpuMemFree
+    %t4 = gpu.dealloc async [%t3, %t1] %buf : memref<?xf32>
+    gpu.wait [%t4]
     return
   }
 }

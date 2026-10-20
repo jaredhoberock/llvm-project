@@ -770,6 +770,9 @@ LogicalResult ConvertAllocOpToGpuRuntimeCallPattern::matchAndRewrite(
   if (isShared && allocOp.getAsyncToken())
     return rewriter.notifyMatchFailure(
         allocOp, "Host Shared allocation cannot be done async");
+  if (adaptor.getAsyncDependencies().size() > 1)
+    return rewriter.notifyMatchFailure(
+        allocOp, "Can convert with at most one async dependency.");
 
   // Get shape of the memref as values: static sizes are constant
   // values and dynamic sizes are passed to 'alloc' as operands.
@@ -793,6 +796,14 @@ LogicalResult ConvertAllocOpToGpuRuntimeCallPattern::matchAndRewrite(
       allocCallBuilder.create(loc, rewriter, {sizeBytes, stream, isHostShared})
           .getResult();
 
+  // Cast the runtime-returned pointer to the type of the descriptor's pointer
+  // fields, whose address space is the one the type converter gives the
+  // memref's memory space.
+  Type descriptorPtrType = getElementPtrType(memRefType);
+  if (allocatedPtr.getType() != descriptorPtrType)
+    allocatedPtr = LLVM::AddrSpaceCastOp::create(rewriter, loc,
+                                                 descriptorPtrType, allocatedPtr);
+
   // No alignment.
   Value alignedPtr = allocatedPtr;
 
@@ -815,11 +826,18 @@ LogicalResult ConvertDeallocOpToGpuRuntimeCallPattern::matchAndRewrite(
     ConversionPatternRewriter &rewriter) const {
   if (failed(areAllLLVMTypes(deallocOp, adaptor.getOperands(), rewriter)))
     return failure();
+  if (adaptor.getAsyncDependencies().size() > 1)
+    return rewriter.notifyMatchFailure(
+        deallocOp, "Can convert with at most one async dependency.");
 
   Location loc = deallocOp.getLoc();
 
+  // The runtime frees a pointer in the default address space.
   Value pointer =
       MemRefDescriptor(adaptor.getMemref()).allocatedPtr(rewriter, loc);
+  if (pointer.getType() != llvmPointerType)
+    pointer =
+        LLVM::AddrSpaceCastOp::create(rewriter, loc, llvmPointerType, pointer);
   auto nullPtr = mlir::LLVM::ZeroOp::create(rewriter, loc, llvmPointerType);
   Value stream = adaptor.getAsyncDependencies().empty()
                      ? nullPtr
