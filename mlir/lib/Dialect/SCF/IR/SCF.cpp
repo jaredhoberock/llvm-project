@@ -974,6 +974,44 @@ mlir::scf::replaceAndCastForOpIterArg(RewriterBase &rewriter, scf::ForOp forOp,
   return newResults;
 }
 
+/// Returns true if `value` is `iterArg`, or derives from it through the tied
+/// results of destination-style ops and of scf.for loops that keep the shape
+/// of the tensor they carry, so that it has the shape of `iterArg`.
+static bool keepsShapeOfIterArg(Value value, BlockArgument iterArg) {
+  while (value != iterArg) {
+    auto result = dyn_cast<OpResult>(value);
+    if (!result)
+      return false;
+    Operation *owner = result.getOwner();
+    if (auto dpsOp = dyn_cast<DestinationStyleOpInterface>(owner)) {
+      value = dpsOp.getTiedOpOperand(result)->get();
+      continue;
+    }
+    auto innerForOp = dyn_cast<ForOp>(owner);
+    if (!innerForOp)
+      return false;
+    BlockArgument innerIterArg = innerForOp.getTiedLoopRegionIterArg(result);
+    if (!keepsShapeOfIterArg(
+            innerForOp.getTiedLoopYieldedValue(innerIterArg)->get(),
+            innerIterArg))
+      return false;
+    value = innerForOp.getTiedLoopInit(innerIterArg)->get();
+  }
+  return true;
+}
+
+/// Returns true if `forOp` yields for `iterArg` a value of type `staticType`
+/// whenever `iterArg` has that type: a tensor.cast from `staticType`, or a
+/// value with the shape of `iterArg`.
+static bool yieldsStaticType(ForOp forOp, BlockArgument iterArg,
+                             Type staticType) {
+  Value yielded = forOp.getTiedLoopYieldedValue(iterArg)->get();
+  if (auto yieldedCast = yielded.getDefiningOp<tensor::CastOp>())
+    if (yieldedCast.getSource().getType() == staticType)
+      return true;
+  return keepsShapeOfIterArg(yielded, iterArg);
+}
+
 namespace {
 /// Fold scf.for iter_arg/result pairs that go through incoming/ougoing
 /// a tensor.cast op pair so as to pull the tensor.cast inside the scf.for:
@@ -982,8 +1020,9 @@ namespace {
 ///   %0 = tensor.cast %t0 : tensor<32x1024xf32> to tensor<?x?xf32>
 ///   %1 = scf.for %i = %c0 to %c1024 step %c32 iter_args(%iter_t0 = %0)
 ///      -> (tensor<?x?xf32>) {
-///     %2 = call @do(%iter_t0) : (tensor<?x?xf32>) -> tensor<?x?xf32>
-///     scf.yield %2 : tensor<?x?xf32>
+///     %2 = call @do(%iter_t0) : (tensor<?x?xf32>) -> tensor<32x1024xf32>
+///     %3 = tensor.cast %2 : tensor<32x1024xf32> to tensor<?x?xf32>
+///     scf.yield %3 : tensor<?x?xf32>
 ///   }
 ///   use_of(%1)
 /// ```
@@ -994,9 +1033,8 @@ namespace {
 ///   %0 = scf.for %arg2 = %c0 to %c1024 step %c32 iter_args(%arg3 = %arg0)
 ///       -> (tensor<32x1024xf32>) {
 ///     %2 = tensor.cast %arg3 : tensor<32x1024xf32> to tensor<?x?xf32>
-///     %3 = call @do(%2) : (tensor<?x?xf32>) -> tensor<?x?xf32>
-///     %4 = tensor.cast %3 : tensor<?x?xf32> to tensor<32x1024xf32>
-///     scf.yield %4 : tensor<32x1024xf32>
+///     %3 = call @do(%2) : (tensor<?x?xf32>) -> tensor<32x1024xf32>
+///     scf.yield %3 : tensor<32x1024xf32>
 ///   }
 ///   %1 = tensor.cast %0 : tensor<32x1024xf32> to tensor<?x?xf32>
 ///   use_of(%1)
@@ -1019,6 +1057,9 @@ struct ForOpTensorCastFolder : public OpRewritePattern<ForOp> {
               incomingCast.getSource().getType()))
         continue;
       if (!std::get<1>(it).hasOneUse())
+        continue;
+      if (!yieldsStaticType(op, op.getTiedLoopRegionIterArg(&iterOpOperand),
+                            incomingCast.getSource().getType()))
         continue;
 
       // Create a new ForOp with that iter operand replaced.
