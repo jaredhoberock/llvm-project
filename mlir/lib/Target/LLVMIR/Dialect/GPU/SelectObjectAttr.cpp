@@ -377,9 +377,19 @@ llvm::LaunchKernel::createKernelArgArray(mlir::gpu::LaunchFuncOp op) {
     structTypes[i] = arg->getType();
 
   Type *structTy = StructType::create(module.getContext(), structTypes);
-  Value *argStruct = builder.CreateAlloca(structTy, 0u);
-  Value *argArray = builder.CreateAlloca(
-      ptrTy, ConstantInt::get(intPtrTy, structTypes.size()));
+
+  // The argument storage is a static allocation in the function's entry block,
+  // so a launch the function repeats (in a loop) reuses one allocation instead
+  // of growing the stack at every launch.
+  Value *argStruct, *argArray;
+  {
+    IRBuilderBase::InsertPointGuard guard(builder);
+    BasicBlock &entry = builder.GetInsertBlock()->getParent()->getEntryBlock();
+    builder.SetInsertPoint(&entry, entry.getFirstInsertionPt());
+    argStruct = builder.CreateAlloca(structTy, 0u);
+    argArray = builder.CreateAlloca(
+        ptrTy, ConstantInt::get(intPtrTy, structTypes.size()));
+  }
 
   for (auto [i, arg] : enumerate(args)) {
     Value *structMember = builder.CreateStructGEP(structTy, argStruct, i);

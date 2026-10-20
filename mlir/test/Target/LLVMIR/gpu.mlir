@@ -43,6 +43,36 @@ module attributes {gpu.container_module} {
 
 // -----
 
+// Checking that a launch in a loop stores its arguments into storage allocated
+// once, in the entry block.
+module attributes {gpu.container_module} {
+  gpu.binary @kernel_module  [#gpu.object<#nvvm.target, "BLOB">]
+  // CHECK-LABEL: define void @launch_in_loop(
+  llvm.func @launch_in_loop(%n : i64) {
+    // CHECK-NEXT: [[ARGS:%.*]] = alloca %{{.*}}, align 8
+    // CHECK-NEXT: [[ARGS_ARRAY:%.*]] = alloca ptr, i64 1, align 8
+    // CHECK-NEXT: br label %[[LOOP:.*]]
+    // CHECK: {{^}}[[LOOP]]:
+    // CHECK-NOT: alloca
+    // CHECK: store ptr %{{.*}}, ptr %{{.*}}, align 8
+    // CHECK-NOT: alloca
+    // CHECK: call void @mgpuLaunchKernel({{.*}}, ptr [[ARGS_ARRAY]], ptr null, i64 1)
+    %c0 = llvm.mlir.constant(0 : i64) : i64
+    %c1 = llvm.mlir.constant(1 : i64) : i64
+    %c8 = llvm.mlir.constant(8 : i64) : i64
+    llvm.br ^loop(%c0 : i64)
+  ^loop(%i : i64):
+    gpu.launch_func @kernel_module::@kernel blocks in (%c8, %c8, %c8) threads in (%c8, %c8, %c8) : i64 args(%i : i64)
+    %next = llvm.add %i, %c1 : i64
+    %done = llvm.icmp "eq" %next, %n : i64
+    llvm.cond_br %done, ^exit, ^loop(%next : i64)
+  ^exit:
+    llvm.return
+  }
+}
+
+// -----
+
 // Checking the correct selection of the second object using an index as a selector.
 module {
   // CHECK: @kernel_module_binary = internal constant [1 x i8] c"1", align 8
