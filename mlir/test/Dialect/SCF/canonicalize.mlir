@@ -866,7 +866,7 @@ func.func @replace_duplicate_iter_args(%lb: index, %ub: index, %step: index, %a:
 
 // -----
 
-func.func private @do(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32>
+func.func private @do(%arg0: tensor<?x?xf32>) -> tensor<32x1024xf32>
 
 func.func @matmul_on_tensors(%t0: tensor<32x1024xf32>) -> tensor<?x?xf32> {
   %c0 = arith.constant 0 : index
@@ -874,8 +874,9 @@ func.func @matmul_on_tensors(%t0: tensor<32x1024xf32>) -> tensor<?x?xf32> {
   %c1024 = arith.constant 1024 : index
   %0 = tensor.cast %t0 : tensor<32x1024xf32> to tensor<?x?xf32>
   %1 = scf.for %i = %c0 to %c1024 step %c32 iter_args(%iter_t0 = %0) -> (tensor<?x?xf32>) {
-    %2 = func.call @do(%iter_t0) : (tensor<?x?xf32>) -> tensor<?x?xf32>
-    scf.yield %2 : tensor<?x?xf32>
+    %2 = func.call @do(%iter_t0) : (tensor<?x?xf32>) -> tensor<32x1024xf32>
+    %3 = tensor.cast %2 : tensor<32x1024xf32> to tensor<?x?xf32>
+    scf.yield %3 : tensor<?x?xf32>
   } {some_attr}
   return %1 : tensor<?x?xf32>
 }
@@ -885,12 +886,118 @@ func.func @matmul_on_tensors(%t0: tensor<32x1024xf32>) -> tensor<?x?xf32> {
 //   CHECK-NOT: tensor.cast
 //       CHECK: %[[FOR_RES:.*]] = scf.for {{.*}} iter_args(%[[ITER_T0:.*]] = %[[T0]]) -> (tensor<32x1024xf32>) {
 //       CHECK:   %[[CAST:.*]] = tensor.cast %[[ITER_T0]] : tensor<32x1024xf32> to tensor<?x?xf32>
-//       CHECK:   %[[DONE:.*]] = func.call @do(%[[CAST]]) : (tensor<?x?xf32>) -> tensor<?x?xf32>
-//       CHECK:   %[[UNCAST:.*]] = tensor.cast %[[DONE]] : tensor<?x?xf32> to tensor<32x1024xf32>
-//       CHECK:   scf.yield %[[UNCAST]] : tensor<32x1024xf32>
+//       CHECK:   %[[DONE:.*]] = func.call @do(%[[CAST]]) : (tensor<?x?xf32>) -> tensor<32x1024xf32>
+//       CHECK:   scf.yield %[[DONE]] : tensor<32x1024xf32>
 //       CHECK: } {some_attr}
 //       CHECK: %[[RES:.*]] = tensor.cast
 //       CHECK: return %[[RES]] : tensor<?x?xf32>
+
+// -----
+
+// A loop whose body yields a value tied, through destination-style ops, to its
+// iter_arg keeps the iter_arg's shape, so the cast moves into the loop.
+
+func.func @tensor_cast_into_for_tied_yield(%t0: tensor<32x1024xf32>, %t1: tensor<4x4xf32>) -> tensor<?x?xf32> {
+  %c0 = arith.constant 0 : index
+  %c32 = arith.constant 32 : index
+  %c1024 = arith.constant 1024 : index
+  %0 = tensor.cast %t0 : tensor<32x1024xf32> to tensor<?x?xf32>
+  %1 = scf.for %i = %c0 to %c1024 step %c32 iter_args(%iter_t0 = %0) -> (tensor<?x?xf32>) {
+    %2 = tensor.insert_slice %t1 into %iter_t0[0, %i] [4, 4] [1, 1] : tensor<4x4xf32> into tensor<?x?xf32>
+    scf.yield %2 : tensor<?x?xf32>
+  }
+  return %1 : tensor<?x?xf32>
+}
+// CHECK-LABEL: func @tensor_cast_into_for_tied_yield
+//  CHECK-SAME:   %[[T0:[0-9a-z]*]]: tensor<32x1024xf32>
+//   CHECK-NOT: tensor.cast
+//       CHECK: %[[FOR_RES:.*]] = scf.for {{.*}} iter_args(%[[ITER_T0:.*]] = %[[T0]]) -> (tensor<32x1024xf32>) {
+//       CHECK:   %[[INSERTED:.*]] = tensor.insert_slice {{.*}} into %[[ITER_T0]]
+//       CHECK:   scf.yield %[[INSERTED]] : tensor<32x1024xf32>
+//       CHECK: %[[RES:.*]] = tensor.cast %[[FOR_RES]] : tensor<32x1024xf32> to tensor<?x?xf32>
+//       CHECK: return %[[RES]] : tensor<?x?xf32>
+
+// -----
+
+// A loop whose body yields the result of an inner loop that keeps the shape of
+// the iter_arg it is given keeps the iter_arg's shape too.
+
+func.func @tensor_cast_into_for_nested_tied_yield(%t0: tensor<32x1024xf32>, %t1: tensor<4x4xf32>) -> tensor<?x?xf32> {
+  %c0 = arith.constant 0 : index
+  %c4 = arith.constant 4 : index
+  %c32 = arith.constant 32 : index
+  %c1024 = arith.constant 1024 : index
+  %0 = tensor.cast %t0 : tensor<32x1024xf32> to tensor<?x?xf32>
+  %1 = scf.for %i = %c0 to %c1024 step %c32 iter_args(%iter_t0 = %0) -> (tensor<?x?xf32>) {
+    %2 = scf.for %j = %c0 to %c32 step %c4 iter_args(%iter_t1 = %iter_t0) -> (tensor<?x?xf32>) {
+      %3 = tensor.insert_slice %t1 into %iter_t1[%j, %i] [4, 4] [1, 1] : tensor<4x4xf32> into tensor<?x?xf32>
+      scf.yield %3 : tensor<?x?xf32>
+    }
+    scf.yield %2 : tensor<?x?xf32>
+  }
+  return %1 : tensor<?x?xf32>
+}
+// CHECK-LABEL: func @tensor_cast_into_for_nested_tied_yield
+//  CHECK-SAME:   %[[T0:[0-9a-z]*]]: tensor<32x1024xf32>
+//   CHECK-NOT: tensor.cast
+//       CHECK: %[[FOR_RES:.*]] = scf.for {{.*}} iter_args(%[[ITER_T0:.*]] = %[[T0]]) -> (tensor<32x1024xf32>) {
+//       CHECK:   %[[INNER_RES:.*]] = scf.for {{.*}} iter_args(%[[ITER_T1:.*]] = %[[ITER_T0]]) -> (tensor<32x1024xf32>) {
+//       CHECK:     %[[INSERTED:.*]] = tensor.insert_slice {{.*}} into %[[ITER_T1]]
+//       CHECK:     scf.yield %[[INSERTED]] : tensor<32x1024xf32>
+//       CHECK:   scf.yield %[[INNER_RES]] : tensor<32x1024xf32>
+//       CHECK: %[[RES:.*]] = tensor.cast %[[FOR_RES]] : tensor<32x1024xf32> to tensor<?x?xf32>
+//       CHECK: return %[[RES]] : tensor<?x?xf32>
+
+// -----
+
+// A loop whose body yields a tensor of unknown shape may change the shape it
+// carries, so the cast of its initial value stays outside the loop.
+
+func.func private @resize(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32>
+
+func.func @no_tensor_cast_into_for_unknown_yield(%t0: tensor<32x1024xf32>) -> tensor<?x?xf32> {
+  %c0 = arith.constant 0 : index
+  %c32 = arith.constant 32 : index
+  %c1024 = arith.constant 1024 : index
+  %0 = tensor.cast %t0 : tensor<32x1024xf32> to tensor<?x?xf32>
+  %1 = scf.for %i = %c0 to %c1024 step %c32 iter_args(%iter_t0 = %0) -> (tensor<?x?xf32>) {
+    %2 = func.call @resize(%iter_t0) : (tensor<?x?xf32>) -> tensor<?x?xf32>
+    scf.yield %2 : tensor<?x?xf32>
+  }
+  return %1 : tensor<?x?xf32>
+}
+// CHECK-LABEL: func @no_tensor_cast_into_for_unknown_yield
+//  CHECK-SAME:   %[[T0:[0-9a-z]*]]: tensor<32x1024xf32>
+//       CHECK: %[[CAST:.*]] = tensor.cast %[[T0]] : tensor<32x1024xf32> to tensor<?x?xf32>
+//       CHECK: %[[FOR_RES:.*]] = scf.for {{.*}} iter_args(%[[ITER_T0:.*]] = %[[CAST]]) -> (tensor<?x?xf32>) {
+//   CHECK-NOT:   tensor.cast
+//       CHECK:   %[[DONE:.*]] = func.call @resize(%[[ITER_T0]]) : (tensor<?x?xf32>) -> tensor<?x?xf32>
+//       CHECK:   scf.yield %[[DONE]] : tensor<?x?xf32>
+//       CHECK: return %[[FOR_RES]] : tensor<?x?xf32>
+
+// -----
+
+// A loop whose body yields a cast from a static type other than the initial
+// value's keeps the cast of its initial value outside the loop.
+
+func.func private @reshape(%arg0: tensor<?x?xf32>) -> tensor<16x2048xf32>
+
+func.func @no_tensor_cast_into_for_other_static_yield(%t0: tensor<32x1024xf32>) -> tensor<?x?xf32> {
+  %c0 = arith.constant 0 : index
+  %c32 = arith.constant 32 : index
+  %c1024 = arith.constant 1024 : index
+  %0 = tensor.cast %t0 : tensor<32x1024xf32> to tensor<?x?xf32>
+  %1 = scf.for %i = %c0 to %c1024 step %c32 iter_args(%iter_t0 = %0) -> (tensor<?x?xf32>) {
+    %2 = func.call @reshape(%iter_t0) : (tensor<?x?xf32>) -> tensor<16x2048xf32>
+    %3 = tensor.cast %2 : tensor<16x2048xf32> to tensor<?x?xf32>
+    scf.yield %3 : tensor<?x?xf32>
+  }
+  return %1 : tensor<?x?xf32>
+}
+// CHECK-LABEL: func @no_tensor_cast_into_for_other_static_yield
+//  CHECK-SAME:   %[[T0:[0-9a-z]*]]: tensor<32x1024xf32>
+//       CHECK: %[[CAST:.*]] = tensor.cast %[[T0]] : tensor<32x1024xf32> to tensor<?x?xf32>
+//       CHECK: scf.for {{.*}} iter_args(%{{.*}} = %[[CAST]]) -> (tensor<?x?xf32>) {
 
 // -----
 
