@@ -2449,9 +2449,13 @@ foreach a_type = ["s", "u"] in {
 
 def SDTStackRestore : SDTypeProfile<0, 1, [SDTCisInt<0>]>;
 
+// A stack restore frees the stack above the pointer it restores, so a load of
+// that memory must not move across it: the restore may store, which the code
+// motion that reads mayStore respects (MachineSink's isSafeToMove and its
+// search for a store between a load and its destination).
 def stackrestore :
   SDNode<"NVPTXISD::STACKRESTORE", SDTStackRestore,
-         [SDNPHasChain, SDNPSideEffect]>;
+         [SDNPHasChain, SDNPSideEffect, SDNPMayStore]>;
 
 def stacksave :
   SDNode<"NVPTXISD::STACKSAVE", SDTIntLeaf,
