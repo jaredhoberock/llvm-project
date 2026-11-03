@@ -512,6 +512,15 @@ using has_get_method = decltype(T::get(std::declval<Ts>()...));
 template <typename T, typename... Ts>
 using has_get_as_key = decltype(std::declval<T>().getAsKey());
 
+/// Returns true if the storage key of kind `T` holds an attribute or type,
+/// decided from the key's type so that no key is built.
+template <typename T, typename ImplT = typename T::ImplType>
+constexpr bool hasImmediateSubElements() {
+  if constexpr (llvm::is_detected<has_get_as_key, ImplT>::value)
+    return has_sub_attr_or_type_v<std::decay_t<has_get_as_key<ImplT>>>;
+  return false;
+}
+
 /// This function provides the underlying implementation for the
 /// SubElementInterface walk method, using the key type of the derived
 /// attribute/type to interact with the individual parameters.
@@ -523,12 +532,8 @@ void walkImmediateSubElementsImpl(T derived,
   (void)derived;
   (void)walkAttrsFn;
   (void)walkTypesFn;
-  if constexpr (llvm::is_detected<has_get_as_key, ImplT>::value) {
+  if constexpr (hasImmediateSubElements<T>()) {
     auto key = static_cast<ImplT *>(derived.getImpl())->getAsKey();
-
-    // If we don't have any sub-elements, there is nothing to do.
-    if constexpr (!has_sub_attr_or_type_v<decltype(key)>)
-      return;
     AttrTypeImmediateSubElementWalker walker(walkAttrsFn, walkTypesFn);
     AttrTypeSubElementHandler<decltype(key)>::walk(key, walker);
   }
