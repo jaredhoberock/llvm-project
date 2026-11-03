@@ -29,6 +29,23 @@ Type AbstractType::replaceImmediateSubElements(Type type,
 }
 
 //===----------------------------------------------------------------------===//
+// TypeStorage
+//===----------------------------------------------------------------------===//
+
+void TypeStorage::initialize(const AbstractType &abstractTy) {
+  // The sub-element walk casts this type through its descriptor, so the
+  // descriptor is set first. Each sub-element's bit is final already.
+  abstractTypeAndBit.setPointer(const_cast<AbstractType *>(&abstractTy));
+  bool bit = abstractTy.hasTrait<TypeTrait::IsMutable>();
+  auto join = [&](auto element) {
+    bit |= element.getImpl()->mayContainSymbolRefs();
+  };
+  if (!bit)
+    abstractTy.walkImmediateSubElements(Type(this), join, join);
+  abstractTypeAndBit.setInt(bit);
+}
+
+//===----------------------------------------------------------------------===//
 // Type
 //===----------------------------------------------------------------------===//
 

@@ -174,24 +174,31 @@ class alignas(8) AttributeStorage : public StorageUniquer::BaseStorage {
 public:
   /// Return the abstract descriptor for this attribute.
   const AbstractAttribute &getAbstractAttribute() const {
-    assert(abstractAttribute && "Malformed attribute storage object.");
-    return *abstractAttribute;
+    assert(abstractAttributeAndBit.getPointer() &&
+           "Malformed attribute storage object.");
+    return *abstractAttributeAndBit.getPointer();
   }
 
+  /// Returns false only if this attribute is not a SymbolRefAttr, none is
+  /// reachable through its sub-elements, and no kind among them is mutable, so
+  /// the answer holds after any mutation; true means a search must walk.
+  bool mayContainSymbolRefs() const { return abstractAttributeAndBit.getInt(); }
+
 protected:
-  /// Set the abstract attribute for this storage instance. This is used by the
-  /// AttributeUniquer when initializing a newly constructed storage object.
-  void initializeAbstractAttribute(const AbstractAttribute &abstractAttr) {
-    abstractAttribute = &abstractAttr;
-  }
+  /// Set the abstract attribute for this storage instance, and the bit
+  /// returned by `mayContainSymbolRefs`. This is used by the AttributeUniquer
+  /// when initializing a newly constructed storage object.
+  void initializeAbstractAttribute(const AbstractAttribute &abstractAttr);
 
   /// Default initialization for attribute storage classes that require no
   /// additional initialization.
   void initialize(MLIRContext *context) {}
 
 private:
-  /// The abstract descriptor for this attribute.
-  const AbstractAttribute *abstractAttribute = nullptr;
+  /// The abstract descriptor for this attribute. Its low bit, free because of
+  /// the descriptor's alignment, is `mayContainSymbolRefs`, set once.
+  llvm::PointerIntPair<const AbstractAttribute *, 1, bool>
+      abstractAttributeAndBit;
 };
 
 /// Default storage type for attributes that require no additional

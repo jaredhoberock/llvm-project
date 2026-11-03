@@ -7,6 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/Dialect.h"
 
 using namespace mlir;
@@ -27,6 +28,26 @@ AbstractAttribute::replaceImmediateSubElements(Attribute attr,
                                                ArrayRef<Attribute> replAttrs,
                                                ArrayRef<Type> replTypes) const {
   return replaceImmediateSubElementsFn(attr, replAttrs, replTypes);
+}
+
+//===----------------------------------------------------------------------===//
+// AttributeStorage
+//===----------------------------------------------------------------------===//
+
+void AttributeStorage::initializeAbstractAttribute(
+    const AbstractAttribute &abstractAttr) {
+  // The kind test and the sub-element walk cast this attribute through its
+  // descriptor, so the descriptor is set first. Each sub-element's bit is
+  // final already.
+  abstractAttributeAndBit.setPointer(&abstractAttr);
+  bool bit = isa<SymbolRefAttr>(Attribute(this)) ||
+             abstractAttr.hasTrait<AttributeTrait::IsMutable>();
+  auto join = [&](auto element) {
+    bit |= element.getImpl()->mayContainSymbolRefs();
+  };
+  if (!bit)
+    abstractAttr.walkImmediateSubElements(Attribute(this), join, join);
+  abstractAttributeAndBit.setInt(bit);
 }
 
 //===----------------------------------------------------------------------===//

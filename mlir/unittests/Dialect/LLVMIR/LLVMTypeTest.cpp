@@ -18,6 +18,18 @@ TEST_F(LLVMIRTest, IsStructTypeMutable) {
   ASSERT_TRUE(structTy.hasTrait<TypeTrait::IsMutable>());
 }
 
+TEST_F(LLVMIRTest, StructTypeMayContainSymbolRefs) {
+  // A struct is of a mutable kind, so it and any holder of it are walked, even
+  // when its body holds no symbol reference.
+  auto bit = [](Type type) { return type.getImpl()->mayContainSymbolRefs(); };
+  auto scalar = IntegerType::get(&context, 32);
+  auto identified = LLVMStructType::getIdentified(&context, "outer");
+  EXPECT_FALSE(bit(scalar));
+  EXPECT_TRUE(bit(identified));
+  EXPECT_TRUE(bit(LLVMStructType::getLiteral(&context, {scalar})));
+  EXPECT_TRUE(bit(LLVMArrayType::get(identified, 2)));
+}
+
 #if GTEST_HAS_DEATH_TEST && !defined(NDEBUG)
 using LLVMIRDeathTest = LLVMIRTest;
 

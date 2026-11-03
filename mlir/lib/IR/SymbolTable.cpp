@@ -529,6 +529,22 @@ LogicalResult detail::verifySymbol(Operation *op) {
 // Symbol Use Lists
 //===----------------------------------------------------------------------===//
 
+/// Skips an attribute or type through which no symbol reference is reachable.
+/// Registered after a search's own callbacks, it is tried first.
+template <typename T>
+static WalkResult skipIfNoSymbolRef(T element) {
+  return element.getImpl()->mayContainSymbolRefs() ? WalkResult::advance()
+                                                   : WalkResult::skip();
+}
+
+/// Keeps, unvisited, an attribute or type that skipIfNoSymbolRef skips.
+template <typename T>
+static std::optional<std::pair<T, WalkResult>> keepIfNoSymbolRef(T element) {
+  if (element.getImpl()->mayContainSymbolRefs())
+    return std::nullopt;
+  return {{element, WalkResult::skip()}};
+}
+
 /// Walk all of the symbol references within the given operation, invoking the
 /// provided callback for each found use. The callbacks takes the use of the
 /// symbol.
@@ -537,15 +553,17 @@ walkSymbolRefs(Operation *op,
                function_ref<WalkResult(SymbolTable::SymbolUse)> callback) {
   bool interrupted = false;
   auto walk = [&](Attribute attr) {
-    if (interrupted)
+    if (interrupted || !attr.getImpl()->mayContainSymbolRefs())
       return;
-    interrupted = attr.walk<WalkOrder::PreOrder>([&](SymbolRefAttr symbolRef) {
-                        if (callback({op, symbolRef}).wasInterrupted())
-                          return WalkResult::interrupt();
+    interrupted = attr.walk<WalkOrder::PreOrder>(
+                          [&](SymbolRefAttr symbolRef) {
+                            if (callback({op, symbolRef}).wasInterrupted())
+                              return WalkResult::interrupt();
 
-                        // Don't walk nested references.
-                        return WalkResult::skip();
-                      })
+                            // Don't walk nested references.
+                            return WalkResult::skip();
+                          },
+                          skipIfNoSymbolRef<Attribute>, skipIfNoSymbolRef<Type>)
                       .wasInterrupted();
   };
   walk(op->getRawDictionaryAttrs());
@@ -898,6 +916,8 @@ replaceAllSymbolUsesImpl(SymbolT symbol, StringAttr newSymbol, IRUnitT *limit) {
           }
           return {attr, WalkResult::skip()};
         });
+    replacer.addReplacement(keepIfNoSymbolRef<Attribute>);
+    replacer.addReplacement(keepIfNoSymbolRef<Type>);
 
     auto walkFn = [&](Operation *op) -> std::optional<WalkResult> {
       replacer.replaceElementsIn(op);

@@ -15,6 +15,7 @@
 
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/StorageUniquerSupport.h"
+#include "llvm/ADT/PointerIntPair.h"
 #include "llvm/ADT/Twine.h"
 
 namespace mlir {
@@ -170,23 +171,28 @@ class TypeStorage : public StorageUniquer::BaseStorage {
 public:
   /// Return the abstract type descriptor for this type.
   const AbstractType &getAbstractType() {
-    assert(abstractType && "Malformed type storage object.");
-    return *abstractType;
+    assert(abstractTypeAndBit.getPointer() && "Malformed type storage object.");
+    return *abstractTypeAndBit.getPointer();
   }
+
+  /// Returns false only if no SymbolRefAttr is reachable through this type's
+  /// sub-elements and no kind among this type and them is mutable, so the
+  /// answer holds after any mutation; true means a search must walk.
+  bool mayContainSymbolRefs() const { return abstractTypeAndBit.getInt(); }
 
 protected:
   /// This constructor is used by derived classes as part of the TypeUniquer.
   TypeStorage() {}
 
 private:
-  /// Set the abstract type for this storage instance. This is used by the
-  /// TypeUniquer when initializing a newly constructed type storage object.
-  void initialize(const AbstractType &abstractTy) {
-    abstractType = const_cast<AbstractType *>(&abstractTy);
-  }
+  /// Set the abstract type for this storage instance, and the bit returned by
+  /// `mayContainSymbolRefs`. This is used by the TypeUniquer when initializing
+  /// a newly constructed type storage object.
+  void initialize(const AbstractType &abstractTy);
 
-  /// The abstract description for this type.
-  AbstractType *abstractType{nullptr};
+  /// The abstract description for this type. Its low bit, free because of the
+  /// descriptor's alignment, is `mayContainSymbolRefs`, set once.
+  llvm::PointerIntPair<AbstractType *, 1, bool> abstractTypeAndBit;
 };
 
 /// Default storage type for types that require no additional initialization or

@@ -590,4 +590,31 @@ TEST(IntegerAttrDeathTest, WrongBitWidthForIndexType) {
 }
 #endif // NDEBUG
 
+// The symbol-reference bit rides in the low bit of the descriptor pointer.
+static_assert(sizeof(AttributeStorage) == sizeof(void *));
+static_assert(sizeof(TypeStorage) == sizeof(void *));
+
+TEST(MayContainSymbolRefsTest, SymbolRefs) {
+  MLIRContext context;
+  Builder b(&context);
+  auto bit = [](Attribute attr) {
+    return attr.getImpl()->mayContainSymbolRefs();
+  };
+  auto typeBit = [](Type type) {
+    return type.getImpl()->mayContainSymbolRefs();
+  };
+  ArrayAttr leaves = b.getArrayAttr({b.getUnitAttr(), b.getI32IntegerAttr(2)});
+  EXPECT_FALSE(bit(b.getStringAttr("s")));
+  EXPECT_FALSE(bit(leaves));
+  EXPECT_FALSE(typeBit(b.getFunctionType({b.getI32Type()}, {})));
+
+  FlatSymbolRefAttr ref = SymbolRefAttr::get(&context, "sym");
+  EXPECT_TRUE(bit(ref));
+  EXPECT_TRUE(bit(b.getArrayAttr({leaves, ref})));
+  Type tensor = RankedTensorType::get({4}, b.getI32Type(), ref);
+  EXPECT_TRUE(typeBit(tensor));
+  EXPECT_TRUE(bit(DistinctAttr::create(ref)));
+  EXPECT_FALSE(bit(DistinctAttr::create(leaves)));
+}
+
 } // namespace
