@@ -464,8 +464,11 @@ static LogicalResult verifyOpTypeSymbolUses(Operation *op,
                                             SymbolTableCollection &symbolTable,
                                             SetVector<Type> &verifiedTypes) {
   // Walk `type` and any nested type parameters reachable from it, verifying
-  // each not-yet-seen type and interrupting on the first failure.
+  // each not-yet-seen type and interrupting on the first failure. A type from
+  // which no symbol reference is reachable holds no symbol use to verify.
   auto verify = [&](Type type) {
+    if (!type.getImpl()->mayContainSymbolRefs())
+      return WalkResult::advance();
     return type.walk<WalkOrder::PreOrder>([&](Type nestedType) {
       if (!verifiedTypes.insert(nestedType))
         return WalkResult::advance();
@@ -488,14 +491,25 @@ static LogicalResult verifyOpTypeSymbolUses(Operation *op,
         if (verify(argument.getType()).wasInterrupted())
           return failure();
 
-  // Verify types nested within the operation's attributes.
-  WalkResult attrResult =
-      op->getAttrDictionary().walk<WalkOrder::PreOrder>([&](Type type) {
-        if (verify(type).wasInterrupted())
-          return WalkResult::interrupt();
-        return WalkResult::advance();
-      });
-  return failure(attrResult.wasInterrupted());
+  // Verify types nested within the operation's attributes. An attribute from
+  // which no symbol reference is reachable holds no such type. The inherent
+  // attributes are visited where they are stored rather than through
+  // getAttrDictionary(), which would build a dictionary for every operation
+  // that keeps them in properties.
+  auto verifyAttr = [&](Attribute attr) {
+    if (!attr.getImpl()->mayContainSymbolRefs())
+      return success();
+    return failure(attr.walk<WalkOrder::PreOrder>([&](Type type) {
+                         return verify(type);
+                       }).wasInterrupted());
+  };
+  if (failed(verifyAttr(op->getRawDictionaryAttrs())))
+    return failure();
+  bool inherentFailed = false;
+  op->getName().walkInherentAttrs(op, [&](StringRef, Attribute &attr) {
+    inherentFailed = inherentFailed || failed(verifyAttr(attr));
+  });
+  return failure(inherentFailed);
 }
 
 LogicalResult detail::verifySymbolTable(Operation *op) {
