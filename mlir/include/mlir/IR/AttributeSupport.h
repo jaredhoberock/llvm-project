@@ -185,10 +185,17 @@ public:
   bool mayContainSymbolRefs() const { return abstractAttributeAndBit.getInt(); }
 
 protected:
-  /// Set the abstract attribute for this storage instance, and the bit
-  /// returned by `mayContainSymbolRefs`. This is used by the AttributeUniquer
-  /// when initializing a newly constructed storage object.
-  void initializeAbstractAttribute(const AbstractAttribute &abstractAttr);
+  /// Set the abstract attribute for this storage instance. This is used by the
+  /// AttributeUniquer when initializing a newly constructed storage object.
+  void initializeAbstractAttribute(const AbstractAttribute &abstractAttr) {
+    abstractAttributeAndBit.setPointer(&abstractAttr);
+  }
+
+  /// Set the bit returned by `mayContainSymbolRefs` from this attribute's kind
+  /// and sub-elements. This is the last step of initializing a newly
+  /// constructed storage object, after any derived `initialize`, so that the
+  /// sub-elements it reads are final.
+  void initializeMayContainSymbolRefs();
 
   /// Default initialization for attribute storage classes that require no
   /// additional initialization.
@@ -250,6 +257,7 @@ public:
           // Execute any additional attribute storage initialization with the
           // context.
           static_cast<typename T::ImplType *>(storage)->initialize(ctx);
+          storage->initializeMayContainSymbolRefs();
         },
         typeID, std::forward<Args>(args)...);
   }
@@ -306,6 +314,7 @@ public:
         .registerSingletonStorageType<typename T::ImplType>(
             typeID, [ctx, typeID](AttributeStorage *storage) {
               initializeAttributeStorage(storage, ctx, typeID);
+              storage->initializeMayContainSymbolRefs();
             });
   }
 

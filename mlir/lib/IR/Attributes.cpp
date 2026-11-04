@@ -34,12 +34,10 @@ AbstractAttribute::replaceImmediateSubElements(Attribute attr,
 // AttributeStorage
 //===----------------------------------------------------------------------===//
 
-void AttributeStorage::initializeAbstractAttribute(
-    const AbstractAttribute &abstractAttr) {
+void AttributeStorage::initializeMayContainSymbolRefs() {
   // The kind test and the sub-element walk cast this attribute through its
-  // descriptor, so the descriptor is set first. Each sub-element's bit is
-  // final already.
-  abstractAttributeAndBit.setPointer(&abstractAttr);
+  // descriptor, which is set already. Each sub-element's bit is final already.
+  const AbstractAttribute &abstractAttr = getAbstractAttribute();
   bool bit = isa<SymbolRefAttr>(Attribute(this)) ||
              abstractAttr.hasTrait<AttributeTrait::IsMutable>();
   auto join = [&](auto element) {

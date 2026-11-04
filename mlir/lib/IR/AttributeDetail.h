@@ -301,6 +301,7 @@ public:
         context, std::forward<Args>(args)...);
     storage->initializeAbstractAttribute(
         AbstractAttribute::lookup(DistinctAttr::getTypeID(), context));
+    storage->initializeMayContainSymbolRefs();
     return storage;
   }
 
