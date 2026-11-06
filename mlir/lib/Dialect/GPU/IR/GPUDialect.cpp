@@ -279,6 +279,11 @@ struct GPUInlinerInterface : public DialectInlinerInterface {
   bool isLegalToInline(Operation *, Region *, bool, IRMapping &) const final {
     return true;
   }
+
+  /// Calls inside the regions of gpu dialect ops can be inlined.
+  bool isLegalToInline(Region *, Region *, bool, IRMapping &) const final {
+    return true;
+  }
 };
 } // namespace
 
