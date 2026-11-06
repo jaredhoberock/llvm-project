@@ -17,7 +17,9 @@
 using namespace mlir;
 using namespace mlir::bufferization;
 
-static bool isMemref(Value v) { return isa<BaseMemRefType>(v.getType()); }
+static bool isMemref(Value v) {
+  return isa<bufferization::BufferLikeType>(v.getType());
+}
 
 namespace {
 /// While CondBranchOp also implement the BranchOpInterface, we add a

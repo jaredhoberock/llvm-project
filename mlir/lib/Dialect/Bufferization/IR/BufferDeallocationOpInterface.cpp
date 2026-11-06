@@ -38,7 +38,9 @@ static Value buildBoolValue(OpBuilder &builder, Location loc, bool value) {
   return arith::ConstantOp::create(builder, loc, builder.getBoolAttr(value));
 }
 
-static bool isMemref(Value v) { return isa<BaseMemRefType>(v.getType()); }
+static bool isMemref(Value v) {
+  return isa<bufferization::BufferLikeType>(v.getType());
+}
 
 //===----------------------------------------------------------------------===//
 // Ownership
@@ -222,6 +224,13 @@ LogicalResult DeallocationState::getMemrefsAndConditionsToDeallocate(
     if (!ownership.isUnique())
       return emitError(memref.getLoc(),
                        "MemRef value does not have valid ownership");
+
+    // A buffer that is not a memref is deallocated as it is.
+    if (!isa<BaseMemRefType>(memref.getType())) {
+      memrefs.push_back(memref);
+      conditions.push_back(ownership.getIndicator());
+      continue;
+    }
 
     // Simply cast unranked MemRefs to ranked memrefs with 0 dimensions such
     // that we can call extract_strided_metadata on it.

@@ -46,7 +46,9 @@ static Value buildBoolValue(OpBuilder &builder, Location loc, bool value) {
   return arith::ConstantOp::create(builder, loc, builder.getBoolAttr(value));
 }
 
-static bool isMemref(Value v) { return isa<BaseMemRefType>(v.getType()); }
+static bool isMemref(Value v) {
+  return isa<bufferization::BufferLikeType>(v.getType());
+}
 
 /// Return "true" if the given op is guaranteed to have neither "Allocate" nor
 /// "Free" side effects.

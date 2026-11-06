@@ -8,6 +8,7 @@
 
 #include "mlir/Dialect/SCF/Transforms/BufferDeallocationOpInterfaceImpl.h"
 #include "mlir/Dialect/Bufferization/IR/BufferDeallocationOpInterface.h"
+#include "mlir/Dialect/Bufferization/IR/BufferizationTypeInterfaces.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 
 using namespace mlir;
@@ -61,7 +62,8 @@ struct ReduceReturnOpInterface
   FailureOr<Operation *> process(Operation *op, DeallocationState &state,
                                  const DeallocationOptions &options) const {
     auto reduceReturnOp = cast<scf::ReduceReturnOp>(op);
-    if (isa<BaseMemRefType>(reduceReturnOp.getOperand().getType()))
+    if (isa<bufferization::BufferLikeType>(
+            reduceReturnOp.getOperand().getType()))
       return op->emitError("only supported when operand is not a MemRef");
 
     SmallVector<Value> updatedOperandOwnership;

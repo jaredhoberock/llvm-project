@@ -4225,6 +4225,11 @@ def TestCreateMemrefOp : TEST_Op<"create_memref_op"> {
   let results = (outs Arg<Bufferization_BufferLikeTypeInterface>:$output);
 }
 
+def TestAllocBufferLikeOp : TEST_Op<"alloc_buffer_like"> {
+  let results = (outs Res<Bufferization_BufferLikeTypeInterface, "",
+                          [MemAlloc]>:$output);
+}
+
 def TestTensorWithFutureLayoutOp
     : TEST_Op<"tensor_with_future_layout",
               [DeclareOpInterfaceMethods<
