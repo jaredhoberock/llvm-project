@@ -195,9 +195,9 @@ def Bufferization_CloneOp : Bufferization_Op<"clone", [
     behavior.
   }];
 
-  let arguments = (ins Arg<AnyRankedOrUnrankedMemRef, "",
+  let arguments = (ins Arg<Bufferization_BufferLikeTypeInterface, "",
                            [MemRead<DefaultResource>]>:$input);
-  let results = (outs Res<AnyRankedOrUnrankedMemRef, "",
+  let results = (outs Res<Bufferization_BufferLikeTypeInterface, "",
                           [MemWrite<DefaultResource>,
                            MemAlloc<DefaultResource>]>:$output);
 
@@ -586,6 +586,9 @@ def Bufferization_DeallocOp : Bufferization_Op<"dealloc", [
     The `memref` operands must be the originally allocated memrefs, however, the
     `retained` memref operands may be arbitrary memrefs.
 
+    The operands may be values of any type implementing `BufferLikeType`; this
+    operation's lowering to the `memref` dialect handles memrefs only.
+
     This operation returns a variadic number of `updatedConditions` operands,
     one updated condition per retained memref. An updated condition indicates
     the ownership of the respective retained memref. It is computed as the
@@ -623,9 +626,10 @@ def Bufferization_DeallocOp : Bufferization_Op<"dealloc", [
     be optimized away by running the `buffer-deallocation-simplification` pass.
   }];
 
-  let arguments = (ins Variadic<AnyRankedOrUnrankedMemRef>:$memrefs,
-                       Variadic<I1>:$conditions,
-                       Variadic<AnyRankedOrUnrankedMemRef>:$retained);
+  let arguments = (ins
+      Variadic<Bufferization_BufferLikeTypeInterface>:$memrefs,
+      Variadic<I1>:$conditions,
+      Variadic<Bufferization_BufferLikeTypeInterface>:$retained);
   let results = (outs Variadic<I1>:$updatedConditions);
 
   let assemblyFormat = [{

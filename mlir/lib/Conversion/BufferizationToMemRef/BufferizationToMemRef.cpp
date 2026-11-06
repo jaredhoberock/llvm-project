@@ -43,6 +43,8 @@ struct CloneOpConversion : public OpConversionPattern<bufferization::CloneOp> {
     Location loc = op->getLoc();
 
     Type type = op.getType();
+    if (!isa<BaseMemRefType>(type))
+      return rewriter.notifyMatchFailure(op, "expected a memref");
     Value alloc;
 
     if (auto unrankedType = dyn_cast<UnrankedMemRefType>(type)) {

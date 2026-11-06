@@ -908,6 +908,8 @@ LogicalResult ToBufferOp::bufferize(RewriterBase &rewriter,
 
 std::optional<Operation *> CloneOp::buildDealloc(OpBuilder &builder,
                                                  Value alloc) {
+  if (!isa<BaseMemRefType>(alloc.getType()))
+    return std::nullopt;
   return memref::DeallocOp::create(builder, alloc.getLoc(), alloc)
       .getOperation();
 }
