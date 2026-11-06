@@ -169,3 +169,80 @@ func.func @duplicate_memref(%arg0: memref<5xf32>, %arg1: memref<6xf32>, %c: i1) 
 // CHECK-LABEL: func @duplicate_memref(
 //       CHECK:   %[[r:.*]] = bufferization.dealloc (%{{.*}} : memref<5xf32>) if (%{{.*}}) retain (%{{.*}} : memref<6xf32>)
 //       CHECK:   return %[[r]]
+
+// -----
+
+// The pass must not fold or CSE values its analysis was built on while the
+// analysis is still queried: a duplicate constant passed to a call, an identity
+// cast and a cast pair are folded, and the analysis is rebuilt after it.
+
+func.func private @f(memref<?xf32>, i1) -> memref<?xi64>
+
+func.func @call_with_duplicate_constant_operand(%n: index) {
+  %true = arith.constant true
+  %0 = memref.alloc(%n) : memref<?xf32>
+  %true_0 = arith.constant true
+  %true_1 = arith.constant true
+  %1 = call @f(%0, %true_0) : (memref<?xf32>, i1) -> memref<?xi64>
+  %true_2 = arith.constant true
+  %2 = call @f(%0, %true_0) : (memref<?xf32>, i1) -> memref<?xi64>
+  bufferization.dealloc (%0, %1, %2 : memref<?xf32>, memref<?xi64>, memref<?xi64>) if (%true, %true_1, %true_2)
+  return
+}
+
+// CHECK-LABEL: func @call_with_duplicate_constant_operand(
+//       CHECK:   %[[true:.*]] = arith.constant true
+//       CHECK:   %[[alloc:.*]] = memref.alloc
+//       CHECK:   %[[r1:.*]] = call @f(%[[alloc]], %[[true]])
+//       CHECK:   %[[r2:.*]] = call @f(%[[alloc]], %[[true]])
+//       CHECK:   bufferization.dealloc (%[[alloc]], %[[r1]], %[[r2]] : {{.*}}) if (%[[true]], %[[true]], %[[true]])
+//       CHECK:   return
+
+// -----
+
+func.func private @g(memref<?xf32>) -> memref<?xi64>
+
+func.func @call_with_identity_cast_operand(%n: index) {
+  %true = arith.constant true
+  %0 = memref.alloc(%n) : memref<?xf32>
+  %c = memref.cast %0 : memref<?xf32> to memref<?xf32>
+  %true_1 = arith.constant true
+  %1 = call @g(%c) : (memref<?xf32>) -> memref<?xi64>
+  %true_2 = arith.constant true
+  %2 = call @g(%c) : (memref<?xf32>) -> memref<?xi64>
+  bufferization.dealloc (%0, %1, %2 : memref<?xf32>, memref<?xi64>, memref<?xi64>) if (%true, %true_1, %true_2)
+  return
+}
+
+// CHECK-LABEL: func @call_with_identity_cast_operand(
+//       CHECK:   %[[alloc:.*]] = memref.alloc
+//   CHECK-NOT:   memref.cast
+//       CHECK:   %[[r1:.*]] = call @g(%[[alloc]])
+//       CHECK:   %[[r2:.*]] = call @g(%[[alloc]])
+//       CHECK:   bufferization.dealloc (%[[alloc]], %[[r1]], %[[r2]] :
+//       CHECK:   return
+
+// -----
+
+func.func private @h(memref<4xf32>) -> memref<?xi64>
+
+func.func @call_with_cast_pair_operand() {
+  %true = arith.constant true
+  %0 = memref.alloc() : memref<4xf32>
+  %c = memref.cast %0 : memref<4xf32> to memref<?xf32>
+  %d = memref.cast %c : memref<?xf32> to memref<4xf32>
+  %true_1 = arith.constant true
+  %1 = call @h(%d) : (memref<4xf32>) -> memref<?xi64>
+  %true_2 = arith.constant true
+  %2 = call @h(%d) : (memref<4xf32>) -> memref<?xi64>
+  bufferization.dealloc (%0, %1, %2 : memref<4xf32>, memref<?xi64>, memref<?xi64>) if (%true, %true_1, %true_2)
+  return
+}
+
+// CHECK-LABEL: func @call_with_cast_pair_operand(
+//       CHECK:   %[[alloc:.*]] = memref.alloc
+//   CHECK-NOT:   memref.cast
+//       CHECK:   %[[r1:.*]] = call @h(%[[alloc]])
+//       CHECK:   %[[r2:.*]] = call @h(%[[alloc]])
+//       CHECK:   bufferization.dealloc (%[[alloc]], %[[r1]], %[[r2]] :
+//       CHECK:   return

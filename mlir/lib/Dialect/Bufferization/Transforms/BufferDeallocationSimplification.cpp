@@ -461,23 +461,43 @@ struct BufferDeallocationSimplificationPass
     : public bufferization::impl::BufferDeallocationSimplificationPassBase<
           BufferDeallocationSimplificationPass> {
   void runOnOperation() override {
-    BufferOriginAnalysis analysis(getOperation());
-    RewritePatternSet patterns(&getContext());
-    patterns.add<RemoveDeallocMemrefsContainedInRetained,
-                 RemoveRetainedMemrefsGuaranteedToNotAlias,
-                 SplitDeallocWhenNotAliasingAnyOther,
-                 RetainedMemrefAliasingAlwaysDeallocatedMemref>(&getContext(),
-                                                                analysis);
-
-    populateDeallocOpCanonicalizationPatterns(patterns, &getContext());
     // We don't want that the block structure changes invalidating the
     // `BufferOriginAnalysis` so we apply the rewrites with `Normal` level of
     // region simplification
-    if (failed(applyPatternsGreedily(
-            getOperation(), std::move(patterns),
-            GreedyRewriteConfig().setRegionSimplificationLevel(
-                GreedySimplifyRegionLevel::Normal))))
-      signalPassFailure();
+    GreedyRewriteConfig config =
+        GreedyRewriteConfig().setRegionSimplificationLevel(
+            GreedySimplifyRegionLevel::Normal);
+    RewritePatternSet canonicalizationPatterns(&getContext());
+    populateDeallocOpCanonicalizationPatterns(canonicalizationPatterns,
+                                              &getContext());
+    FrozenRewritePatternSet canonicalizations(
+        std::move(canonicalizationPatterns));
+
+    // The patterns that query the `BufferOriginAnalysis` run without folding
+    // and constant CSE: both replace and erase values the analysis was built
+    // on (e.g., an identity `memref.cast` or a duplicate constant passed to a
+    // call), which later queries would read. The canonicalizations and folding
+    // run on their own before the analysis is (re)built, until the patterns
+    // that query it change nothing.
+    bool changed = false;
+    do {
+      if (failed(
+              applyPatternsGreedily(getOperation(), canonicalizations, config)))
+        return signalPassFailure();
+      BufferOriginAnalysis analysis(getOperation());
+      RewritePatternSet patterns(&getContext());
+      patterns.add<RemoveDeallocMemrefsContainedInRetained,
+                   RemoveRetainedMemrefsGuaranteedToNotAlias,
+                   SplitDeallocWhenNotAliasingAnyOther,
+                   RetainedMemrefAliasingAlwaysDeallocatedMemref>(&getContext(),
+                                                                  analysis);
+      if (failed(applyPatternsGreedily(getOperation(), std::move(patterns),
+                                       GreedyRewriteConfig(config)
+                                           .enableFolding(false)
+                                           .enableConstantCSE(false),
+                                       &changed)))
+        return signalPassFailure();
+    } while (changed);
   }
 };
 
