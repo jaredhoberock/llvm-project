@@ -73,6 +73,11 @@ struct TestOneShotModuleBufferizePass
       *this, "test-tensor-to-memref",
       llvm::cl::desc("Convert test tensors to builtin memrefs."),
       llvm::cl::init(false)};
+  Option<bool> testTensorToDynamicMemRef{
+      *this, "test-tensor-to-dynamic-memref",
+      llvm::cl::desc("Convert test tensors to builtin memrefs with dynamic "
+                     "extents."),
+      llvm::cl::init(false)};
 
   void runOnOperation() override {
 
@@ -108,6 +113,12 @@ struct TestOneShotModuleBufferizePass
               })
               .Case([&](test::TestTensorType testTensorType)
                         -> bufferization::BufferLikeType {
+                if (testTensorToDynamicMemRef)
+                  return cast<bufferization::BufferLikeType>(MemRefType::get(
+                      SmallVector<int64_t>(testTensorType.getRank(),
+                                           ShapedType::kDynamic),
+                      testTensorType.getElementType(),
+                      MemRefLayoutAttrInterface{}, memSpace));
                 if (testTensorToMemRef)
                   return cast<bufferization::BufferLikeType>(
                       MemRefType::get(testTensorType.getShape(),

@@ -161,8 +161,6 @@ Operation *bufferization::getOwnerOfValue(Value value) {
   return llvm::cast<BlockArgument>(value).getOwner()->getParentOp();
 }
 
-// TODO: A value that is not a builtin tensor is allocated only as a copy,
-// because its dynamic extents cannot be read before bufferization.
 /// Create an AllocTensorOp for the given shaped value. If `copy` is set, the
 /// shaped value is copied. Otherwise, a tensor with undefined contents is
 /// allocated.
@@ -182,12 +180,10 @@ FailureOr<Value> bufferization::allocateTensorForShapedValue(
   }
   auto tensorType = llvm::cast<TensorLikeType>(tensor.getType());
   SmallVector<Value> dynamicSizes;
-  if (!copy) {
-    auto rankedTensorType = dyn_cast<RankedTensorType>(tensorType);
-    if (!rankedTensorType)
-      return getOwnerOfValue(shapedValue)->emitError()
-             << "allocating " << tensorType
-             << " without a copy is not supported";
+  // Only a ranked tensor result takes sizes; any other result has the shape of
+  // its buffer type.
+  auto rankedTensorType = dyn_cast<RankedTensorType>(tensorType);
+  if (!copy && rankedTensorType) {
     // Compute the dynamic part of the shape.
     // First try to query the shape via ReifyRankedShapedTypeOpInterface.
     bool reifiedShapes = false;
@@ -220,11 +216,13 @@ FailureOr<Value> bufferization::allocateTensorForShapedValue(
   // Add 'memory_space' attribute. Not needed if 'copy' operand is specified.
   if (copy)
     return allocTensorOp.getResult();
-  auto copyBufferType =
-      detail::asMemRefType(getBufferType(tensor, options, state));
+  auto copyBufferType = getBufferType(tensor, options, state);
   if (failed(copyBufferType))
     return failure();
-  std::optional<Attribute> memorySpace = copyBufferType->getMemorySpace();
+  // A buffer that is not a memref has no memory space to inherit.
+  std::optional<Attribute> memorySpace;
+  if (auto copyMemRefType = dyn_cast<BaseMemRefType>(*copyBufferType))
+    memorySpace = copyMemRefType.getMemorySpace();
   if (!memorySpace)
     memorySpace =
         options.defaultMemorySpaceFn(cast<TensorLikeType>(tensorType));
