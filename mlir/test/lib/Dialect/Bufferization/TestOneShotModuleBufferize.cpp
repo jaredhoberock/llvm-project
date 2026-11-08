@@ -67,6 +67,15 @@ struct TestOneShotModuleBufferizePass
     return "Pass to test One Shot Module Bufferization";
   }
 
+  Option<bool> allowReturnAllocsFromLoops{
+      *this, "allow-return-allocs-from-loops",
+      llvm::cl::desc("Allows returning/yielding new allocations from a loop."),
+      llvm::cl::init(false)};
+  Option<bool> testTensorToMemRef{
+      *this, "test-tensor-to-memref",
+      llvm::cl::desc("Convert test tensors to builtin memrefs."),
+      llvm::cl::init(false)};
+
   void runOnOperation() override {
 
     llvm::errs() << "Running TestOneShotModuleBufferize on: "
@@ -74,6 +83,7 @@ struct TestOneShotModuleBufferizePass
     bufferization::OneShotBufferizationOptions opt;
 
     opt.bufferizeFunctionBoundaries = true;
+    opt.allowReturnAllocsFromLoops = allowReturnAllocsFromLoops;
     opt.functionArgTypeConverterFn =
         [&](bufferization::TensorLikeType tensor, Attribute memSpace,
             func::FuncOp, const bufferization::BufferizationOptions &options) {
@@ -100,6 +110,11 @@ struct TestOneShotModuleBufferizePass
               })
               .Case([&](test::TestTensorType testTensorType)
                         -> bufferization::BufferLikeType {
+                if (testTensorToMemRef)
+                  return cast<bufferization::BufferLikeType>(
+                      MemRefType::get(testTensorType.getShape(),
+                                      testTensorType.getElementType(),
+                                      MemRefLayoutAttrInterface{}, memSpace));
                 assert(memSpace == nullptr &&
                        "memory space is not supported for test types");
                 // Note: unknown type conversion cannot create layout because
