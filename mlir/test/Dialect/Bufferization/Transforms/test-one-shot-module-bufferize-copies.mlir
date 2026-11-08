@@ -32,3 +32,22 @@ func.func @custom_types_operand_copy(%arg: !test.test_tensor<[4], f64>)
     : (!test.test_tensor<[4], f64>) -> !test.test_tensor<[4], f64>
   return %0, %1 : !test.test_tensor<[4], f64>, !test.test_tensor<[4], f64>
 }
+
+// -----
+
+// CHECK-LABEL: func.func @custom_types_operand_alloc(
+// CHECK-NOT: memref.copy
+// CHECK: memref.alloc() {{.*}}: memref<4xf64>
+// CHECK-NOT: memref.copy
+// CHECK: memref.alloc() {{.*}}: memref<4xf64>
+// CHECK-NOT: memref.copy
+// CHECK: return
+func.func @custom_types_operand_alloc()
+    -> (!test.test_tensor<[4], f64>, !test.test_tensor<[4], f64>) {
+  %e = bufferization.alloc_tensor() : !test.test_tensor<[4], f64>
+  %0 = "test.dummy_tensor_op"(%e)
+    : (!test.test_tensor<[4], f64>) -> !test.test_tensor<[4], f64>
+  %1 = "test.dummy_tensor_op"(%e)
+    : (!test.test_tensor<[4], f64>) -> !test.test_tensor<[4], f64>
+  return %0, %1 : !test.test_tensor<[4], f64>, !test.test_tensor<[4], f64>
+}
