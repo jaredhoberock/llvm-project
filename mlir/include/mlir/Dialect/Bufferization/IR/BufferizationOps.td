@@ -397,8 +397,6 @@ class Bufferization_TensorAndBufferMatch<string tensor, string buffer> : PredOpT
 
 def Bufferization_ToTensorOp : Bufferization_Op<"to_tensor", [
     BufferizableOpInterface,
-    SameOperandsAndResultShape,
-    SameOperandsAndResultElementType,
     Bufferization_TensorAndBufferMatch<"result", "buffer">
   ]> {
   let summary = "create a tensor-like type from a buffer-like type";
@@ -501,8 +499,6 @@ def Bufferization_ToTensorOp : Bufferization_Op<"to_tensor", [
 
 def Bufferization_ToBufferOp : Bufferization_Op<"to_buffer", [
     BufferizableOpInterface,
-    SameOperandsAndResultShape,
-    SameOperandsAndResultElementType,
     Pure,
     Bufferization_TensorAndBufferMatch<"tensor", "buffer">
   ]> {
