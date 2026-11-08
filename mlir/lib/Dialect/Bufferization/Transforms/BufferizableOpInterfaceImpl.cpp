@@ -139,8 +139,7 @@ struct AllocTensorOpInterface
     // TODO: A result that is not a ranked tensor takes no sizes (verifier), so
     // a buffer type with a dynamic dimension is diagnosed rather than
     // allocated unless the op copies a value.
-    if (memRefType.getNumDynamicDims() !=
-        static_cast<int64_t>(dynamicDims.size()))
+    if (memRefType.getNumDynamicDims() != dynamicDims.size())
       return op->emitError()
              << "allocating " << memRefType
              << " needs a size for each dynamic dimension, which the op "
