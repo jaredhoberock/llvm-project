@@ -41,6 +41,11 @@ def Bufferization_AllocTensorOp : Bufferization_Op<"alloc_tensor",
     If `copy` is specified, no dynamic sizes should be passed, since they are
     the same as the dynamic sizes of the `copy` operand.
 
+    The result may be any tensor-like type. Dynamic sizes and `size_hint` are
+    taken only for a ranked tensor result; the bufferized result of any other
+    type has the shape of its buffer type, or of the `copy` operand's buffer
+    when `copy` is specified.
+
     `alloc_tensor` is a helper op for bufferization. The operation is provided
     as an anchor that marks the beginning of a new tensor SSA use-def chain. It
     can be used to control in-place bufferization decisions during One-Shot
