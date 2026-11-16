@@ -172,11 +172,16 @@ struct SelectOpInterface
         return selectOp->emitError(
             "incompatible buffer types on true/false operands");
       }
-      if (trueBuffer.getType() != *targetType) {
-        trueBuffer = *options.castFn(rewriter, loc, *targetType, trueBuffer);
-      }
-      if (falseBuffer.getType() != *targetType) {
-        falseBuffer = *options.castFn(rewriter, loc, *targetType, falseBuffer);
+      for (Value *buffer : {&trueBuffer, &falseBuffer}) {
+        if (buffer->getType() == *targetType)
+          continue;
+        FailureOr<Value> casted =
+            options.castFn(rewriter, loc, *targetType, *buffer);
+        if (failed(casted))
+          return selectOp->emitError()
+                 << "cannot cast a buffer of type " << buffer->getType()
+                 << " to " << *targetType;
+        *buffer = *casted;
       }
     }
 

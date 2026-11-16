@@ -374,12 +374,13 @@ LogicalResult defaultCreateMemCpy(OpBuilder &b, Location loc, Value from,
   return success();
 }
 
+/// Create a `memref.cast` between two cast-compatible memrefs; refuse any
+/// other pair.
 FailureOr<Value> defaultCreateCast(OpBuilder &b, Location loc, Type dest,
                                    Value value) {
-  assert(isa<BaseMemRefType>(dest) && "expected BaseMemRefType");
-  assert(isa<BaseMemRefType>(value.getType()) && "expected BaseMemRefType");
-  assert(memref::CastOp::areCastCompatible(value.getType(), dest) &&
-         "cast incompatible");
+  if (!isa<BaseMemRefType>(dest) || !isa<BaseMemRefType>(value.getType()) ||
+      !memref::CastOp::areCastCompatible(value.getType(), dest))
+    return failure();
   return memref::CastOp::create(b, loc, dest, value).getResult();
 }
 
