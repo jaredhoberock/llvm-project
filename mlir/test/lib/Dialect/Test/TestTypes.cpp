@@ -627,6 +627,39 @@ void TestMemrefType::genFree(::mlir::OpBuilder &builder, ::mlir::Location loc,
       .genIdentity(builder, loc, memref);
 }
 
+/// A test memref is allocated as the memref it stands for, shaped as `like`,
+/// which is handed on only where an extent is dynamic.
+::mlir::FailureOr<::mlir::Value>
+TestMemrefType::genAllocate(::mlir::OpBuilder &builder, ::mlir::Location loc,
+                            ::mlir::Value like, unsigned alignment) const {
+  auto memrefType = getBuiltinMemRefType(*this);
+  Value memrefLike;
+  if (like && !memrefType.hasStaticShape())
+    memrefLike = isa<TestMemrefType>(like.getType())
+                     ? castToBuiltinMemRef(builder, loc, like)
+                     : like;
+  FailureOr<Value> memref =
+      cast<::mlir::bufferization::BufferLikeType>(memrefType)
+          .genAllocate(builder, loc, memrefLike, alignment);
+  if (failed(memref))
+    return failure();
+  return UnrealizedConversionCastOp::create(builder, loc, *this, *memref)
+      .getResult(0);
+}
+
+::mlir::LogicalResult TestMemrefType::genCopy(::mlir::OpBuilder &builder,
+                                              ::mlir::Location loc,
+                                              ::mlir::Value source,
+                                              ::mlir::Value destination) const {
+  if (!isa<TestMemrefType, MemRefType>(source.getType()))
+    return failure();
+  if (isa<TestMemrefType>(source.getType()))
+    source = castToBuiltinMemRef(builder, loc, source);
+  Value memref = castToBuiltinMemRef(builder, loc, destination);
+  return cast<::mlir::bufferization::BufferLikeType>(memref.getType())
+      .genCopy(builder, loc, source, memref);
+}
+
 ::mlir::LogicalResult TestUnshapedType::verifyCompatibleBufferType(
     ::mlir::bufferization::BufferLikeType bufferType,
     ::llvm::function_ref<::mlir::InFlightDiagnostic()> emitError) const {

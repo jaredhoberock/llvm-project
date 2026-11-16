@@ -99,15 +99,71 @@ func.func @conversion_dealloc_simple(%arg0: memref<2xf32>, %arg1: i1) {
 
 // -----
 
-// A clone of a buffer-like value that is not a memref is not lowered to the
-// memref dialect.
+// A clone of a buffer-like value that is not a memref is lowered to the
+// allocation and copy its type builds.
 
+// CHECK-LABEL: func @conversion_buffer_like_clone
+//  CHECK-SAME: ([[ARG0:%.+]]: !test.test_memref<[4], f32>)
+//       CHECK: [[ALLOC:%.+]] = memref.alloc() : memref<4xf32>
+//       CHECK: [[CLONE:%.+]] = builtin.unrealized_conversion_cast [[ALLOC]] : memref<4xf32> to !test.test_memref<[4], f32>
+//       CHECK: [[SRC:%.+]] = builtin.unrealized_conversion_cast [[ARG0]] : !test.test_memref<[4], f32> to memref<4xf32>
+//       CHECK: [[DST:%.+]] = builtin.unrealized_conversion_cast [[CLONE]] : !test.test_memref<[4], f32> to memref<4xf32>
+//       CHECK: memref.copy [[SRC]], [[DST]]
+//       CHECK: return [[CLONE]]
 func.func @conversion_buffer_like_clone(%arg0: !test.test_memref<[4], f32>)
     -> !test.test_memref<[4], f32> {
-  // expected-error@+1 {{failed to legalize operation 'bufferization.clone' that was explicitly marked illegal}}
   %0 = bufferization.clone %arg0
     : !test.test_memref<[4], f32> to !test.test_memref<[4], f32>
   return %0 : !test.test_memref<[4], f32>
+}
+
+// -----
+
+// A clone of a buffer-like value with a dynamic extent is allocated with the
+// extent of the value it clones.
+
+// CHECK-LABEL: func @conversion_buffer_like_clone_dynamic
+//  CHECK-SAME: ([[ARG0:%.+]]: !test.test_memref<[-9223372036854775808], f32>)
+//       CHECK: [[IN:%.+]] = builtin.unrealized_conversion_cast [[ARG0]] : !test.test_memref<[-9223372036854775808], f32> to memref<?xf32>
+//       CHECK: [[C0:%.+]] = arith.constant 0 : index
+//       CHECK: [[DIM:%.+]] = memref.dim [[IN]], [[C0]] : memref<?xf32>
+//       CHECK: [[ALLOC:%.+]] = memref.alloc([[DIM]]) : memref<?xf32>
+//       CHECK: [[CLONE:%.+]] = builtin.unrealized_conversion_cast [[ALLOC]] : memref<?xf32> to !test.test_memref<[-9223372036854775808], f32>
+//       CHECK: memref.copy
+//       CHECK: return [[CLONE]]
+func.func @conversion_buffer_like_clone_dynamic(
+    %arg0: !test.test_memref<[-9223372036854775808], f32>)
+    -> !test.test_memref<[-9223372036854775808], f32> {
+  %0 = bufferization.clone %arg0
+    : !test.test_memref<[-9223372036854775808], f32>
+      to !test.test_memref<[-9223372036854775808], f32>
+  return %0 : !test.test_memref<[-9223372036854775808], f32>
+}
+
+// -----
+
+// A clone whose result's type allocates but cannot copy from the input's type
+// is not lowered.
+
+func.func @conversion_buffer_like_clone_copy_refused(
+    %arg0: !test.test_unshaped<f32>) -> !test.test_memref<[4], f32> {
+  // expected-error@+1 {{failed to legalize operation 'bufferization.clone' that was explicitly marked illegal}}
+  %0 = bufferization.clone %arg0
+    : !test.test_unshaped<f32> to !test.test_memref<[4], f32>
+  return %0 : !test.test_memref<[4], f32>
+}
+
+// -----
+
+// A clone of a buffer-like value whose type does not say how it is allocated
+// and copied is not lowered.
+
+func.func @conversion_buffer_like_clone_not_lowered(
+    %arg0: !test.test_unshaped<f32>) -> !test.test_unshaped<f32> {
+  // expected-error@+1 {{failed to legalize operation 'bufferization.clone' that was explicitly marked illegal}}
+  %0 = bufferization.clone %arg0
+    : !test.test_unshaped<f32> to !test.test_unshaped<f32>
+  return %0 : !test.test_unshaped<f32>
 }
 
 // -----

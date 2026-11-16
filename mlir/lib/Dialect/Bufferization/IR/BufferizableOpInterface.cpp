@@ -367,11 +367,10 @@ FailureOr<Value> defaultCreateAlloc(OpBuilder &b, Location loc, MemRefType type,
   return memref::AllocOp::create(b, loc, type, dynShape).getResult();
 }
 
-/// Create a memory copy between two memref buffers.
+/// Create a memory copy between two buffers, as the destination's type says.
 LogicalResult defaultCreateMemCpy(OpBuilder &b, Location loc, Value from,
                                   Value to) {
-  memref::CopyOp::create(b, loc, from, to);
-  return success();
+  return cast<BufferLikeType>(to.getType()).genCopy(b, loc, from, to);
 }
 
 /// Create a `memref.cast` between two cast-compatible memrefs; refuse any

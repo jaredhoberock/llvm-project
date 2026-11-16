@@ -274,14 +274,15 @@ def ConvertBufferizationToMemRefPass : Pass<"convert-bufferization-to-memref"> {
                 "MemRef dialect";
   let description = [{
 
-    This pass converts bufferization operations into memref operations.
+    This pass converts bufferization operations into the operations their
+    buffers' types build, which are memref operations for memrefs.
 
     In the current state, this pass only transforms a `bufferization.clone`
-    operation into `memref.alloc` and `memref.copy` operations and
+    operation into the allocation and copy its result's type builds
+    (`memref.alloc` and `memref.copy` for a memref) and
     `bufferization.dealloc` operations (the same way as the
-    `-bufferization-lower-deallocations` pass, so a dealloc of a buffer that is
-    not a memref becomes the deallocation its type builds). The conversion of
-    `clone` operations is needed, since some clone operations could remain after
+    `-bufferization-lower-deallocations` pass). The conversion of `clone`
+    operations is needed, since some clone operations could remain after
     applying several transformation processes. Currently, only `canonicalize`
     transforms clone operations or even eliminates them. This can lead to errors
     if any clone op survived after all conversion passes (starting from the

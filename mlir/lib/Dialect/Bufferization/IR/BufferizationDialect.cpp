@@ -75,6 +75,45 @@ struct BuiltinMemRefExternalModel
                     Value buffer) const {
     return memref::ExtractAlignedPointerAsIndexOp::create(builder, loc, buffer);
   }
+
+  /// A ranked memref is allocated with an identity layout and cast to its
+  /// layout; its dynamic extents are read from `like`. It allocates only like
+  /// a memref, and no unranked memref, whose shape is known only when the
+  /// program runs.
+  FailureOr<Value> genAllocate(Type type, OpBuilder &builder, Location loc,
+                               Value like, unsigned alignment) const {
+    auto memrefType = dyn_cast<MemRefType>(type);
+    auto likeType = like ? dyn_cast<BaseMemRefType>(like.getType()) : nullptr;
+    if (!memrefType || (like && !likeType))
+      return failure();
+    if (!memrefType.hasStaticShape() &&
+        (!likeType ||
+         (likeType.hasRank() && likeType.getRank() != memrefType.getRank())))
+      return failure();
+    auto allocType = MemRefType::get(
+        memrefType.getShape(), memrefType.getElementType(),
+        MemRefLayoutAttrInterface(), memrefType.getMemorySpace());
+    if (!memref::CastOp::areCastCompatible(allocType, memrefType))
+      return failure();
+    SmallVector<Value> sizes;
+    for (int64_t i = 0; i < memrefType.getRank(); ++i)
+      if (memrefType.isDynamicDim(i))
+        sizes.push_back(builder.createOrFold<memref::DimOp>(loc, like, i));
+    Value alloc = memref::AllocOp::create(
+        builder, loc, allocType, sizes,
+        alignment ? builder.getI64IntegerAttr(alignment) : IntegerAttr());
+    if (allocType != memrefType)
+      alloc = memref::CastOp::create(builder, loc, memrefType, alloc);
+    return alloc;
+  }
+
+  LogicalResult genCopy(Type type, OpBuilder &builder, Location loc,
+                        Value source, Value destination) const {
+    if (!isa<BaseMemRefType>(source.getType()))
+      return failure();
+    memref::CopyOp::create(builder, loc, source, destination);
+    return success();
+  }
 };
 } // namespace
 

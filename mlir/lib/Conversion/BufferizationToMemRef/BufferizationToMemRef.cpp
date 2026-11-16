@@ -30,10 +30,11 @@ namespace mlir {
 using namespace mlir;
 
 namespace {
-/// The CloneOpConversion transforms all bufferization clone operations into
-/// memref alloc and memref copy operations. In the dynamic-shape case, it also
-/// emits additional dim and constant operations to determine the shape. This
-/// conversion does not resolve memory leaks if it is used alone.
+/// The CloneOpConversion transforms all bufferization clone operations into the
+/// allocation and copy the result's type builds (memref alloc and memref copy
+/// for memrefs). In the dynamic-shape case, it also emits additional dim and
+/// constant operations to determine the shape. This conversion does not resolve
+/// memory leaks if it is used alone.
 struct CloneOpConversion : public OpConversionPattern<bufferization::CloneOp> {
   using OpConversionPattern<bufferization::CloneOp>::OpConversionPattern;
 
@@ -42,12 +43,14 @@ struct CloneOpConversion : public OpConversionPattern<bufferization::CloneOp> {
                   ConversionPatternRewriter &rewriter) const override {
     Location loc = op->getLoc();
 
-    Type type = op.getType();
-    if (!isa<BaseMemRefType>(type))
-      return rewriter.notifyMatchFailure(op, "expected a memref");
-    Value alloc;
+    auto type = cast<bufferization::BufferLikeType>(op.getType());
 
     if (auto unrankedType = dyn_cast<UnrankedMemRefType>(type)) {
+      // An unranked memref's shape is read when the program runs, which takes
+      // a memref input.
+      if (!isa<BaseMemRefType>(op.getInput().getType()))
+        return rewriter.notifyMatchFailure(op, "expected a memref input");
+
       // Constants
       Value zero = arith::ConstantIndexOp::create(rewriter, loc, 0);
       Value one = arith::ConstantIndexOp::create(rewriter, loc, 1);
@@ -79,41 +82,38 @@ struct CloneOpConversion : public OpConversionPattern<bufferization::CloneOp> {
 
       // Allocate new memref with 1D dynamic shape, then reshape into the
       // shape of the original unranked memref
-      alloc = memref::AllocOp::create(rewriter, loc, memrefType, size);
+      Value alloc = memref::AllocOp::create(rewriter, loc, memrefType, size);
       alloc =
           memref::ReshapeOp::create(rewriter, loc, unrankedType, alloc, shape);
-    } else {
-      MemRefType memrefType = cast<MemRefType>(type);
-      MemRefLayoutAttrInterface layout;
-      auto allocType =
-          MemRefType::get(memrefType.getShape(), memrefType.getElementType(),
-                          layout, memrefType.getMemorySpace());
-      // Since this implementation always allocates, certain result types of
-      // the clone op cannot be lowered.
-      if (!memref::CastOp::areCastCompatible({allocType}, {memrefType}))
-        return failure();
-
-      // Transform a clone operation into alloc + copy operation and pay
-      // attention to the shape dimensions.
-      SmallVector<Value, 4> dynamicOperands;
-      for (int i = 0; i < memrefType.getRank(); ++i) {
-        if (!memrefType.isDynamicDim(i))
-          continue;
-        Value dim = rewriter.createOrFold<memref::DimOp>(loc, op.getInput(), i);
-        dynamicOperands.push_back(dim);
-      }
-
-      // Allocate a memref with identity layout.
-      alloc =
-          memref::AllocOp::create(rewriter, loc, allocType, dynamicOperands);
-      // Cast the allocation to the specified type if needed.
-      if (memrefType != allocType)
-        alloc =
-            memref::CastOp::create(rewriter, op->getLoc(), memrefType, alloc);
+      memref::CopyOp::create(rewriter, loc, op.getInput(), alloc);
+      rewriter.replaceOp(op, alloc);
+      return success();
     }
 
-    memref::CopyOp::create(rewriter, loc, op.getInput(), alloc);
-    rewriter.replaceOp(op, alloc);
+    // Any other result's type allocates and copies in place. Since this
+    // implementation always allocates, a clone whose result cannot be
+    // allocated with the extents of its input, or filled from it, cannot be
+    // lowered; what the type built is then removed, so that the IR is left as
+    // it was.
+    Operation *before = op->getPrevNode();
+    FailureOr<Value> alloc =
+        type.genAllocate(rewriter, loc, op.getInput(), /*alignment=*/0);
+    if (failed(alloc) ||
+        failed(type.genCopy(rewriter, loc, op.getInput(), *alloc))) {
+      // Collected before they are erased: while the conversion can roll back,
+      // an erased operation stays in its block until the rewrite is committed.
+      SmallVector<Operation *> inserted;
+      for (Operation *it = op->getPrevNode(); it != before;
+           it = it->getPrevNode())
+        inserted.push_back(it);
+      for (Operation *insertedOp : inserted)
+        rewriter.eraseOp(insertedOp);
+      return rewriter.notifyMatchFailure(op, [&](Diagnostic &diag) {
+        diag << "type " << type << " cannot allocate and copy a clone of "
+             << op.getInput().getType();
+      });
+    }
+    rewriter.replaceOp(op, *alloc);
     return success();
   }
 };
@@ -162,8 +162,8 @@ struct BufferizationToMemRefPass
     target.addLegalDialect<memref::MemRefDialect, arith::ArithDialect,
                            scf::SCFDialect, func::FuncDialect>();
     target.addIllegalDialect<bufferization::BufferizationDialect>();
-    // A buffer type builds its deallocations and identities with operations
-    // of its own choosing.
+    // A buffer type builds its deallocations, identities, allocations and
+    // copies with operations of its own choosing.
     target.markUnknownOpDynamicallyLegal([](Operation *) { return true; });
 
     if (failed(applyPartialConversion(getOperation(), target,

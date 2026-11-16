@@ -187,14 +187,24 @@ LogicalResult AllocTensorOp::bufferize(RewriterBase &rewriter,
   auto allocType = bufferization::getBufferType(getResult(), options, state);
   if (failed(allocType))
     return failure();
-  // TODO: The allocation hook takes a MemRefType; a buffer type that is not a
-  // memref is diagnosed rather than allocated.
+  // The allocation hook takes a MemRefType, so a buffer of another type is
+  // allocated by its type, shaped as the buffer it copies if there is one.
   auto memRefType = dyn_cast<MemRefType>(*allocType);
-  if (!memRefType)
-    return emitError() << "allocating a buffer of type " << *allocType
-                       << " is not supported";
+  if (!memRefType) {
+    FailureOr<Value> alloc = allocType->genAllocate(rewriter, loc, copyBuffer,
+                                                    options.bufferAlignment);
+    if (failed(alloc))
+      return emitError() << "allocating a buffer of type " << *allocType
+                         << " is not supported";
+    if (getCopy() &&
+        failed(options.memCpyFn(rewriter, loc, copyBuffer, *alloc)))
+      return failure();
+    replaceOpWithBufferizedValues(rewriter, getOperation(), *alloc);
+    return success();
+  }
   SmallVector<Value> dynamicDims = getDynamicSizes();
-  if (getCopy()) {
+  // The extents of a copy are read from its buffer when that is a memref.
+  if (getCopy() && isa<MemRefType>(copyBuffer.getType())) {
     assert(dynamicDims.empty() && "expected either `copy` or `dynamicDims`");
     populateDynamicDimSizes(rewriter, loc, copyBuffer, dynamicDims);
   }

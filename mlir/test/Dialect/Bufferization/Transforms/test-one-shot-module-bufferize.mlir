@@ -723,3 +723,50 @@ module @BufferizeLayoutMismatchInArithSelect {
     return %select : tensor<10xf32>
   }
 }
+
+// -----
+
+// A copy of a buffer-like value that is not a memref is allocated and filled
+// as its type says.
+
+// CHECK-LABEL: func.func @custom_types_copy_of_custom_buffer(
+// CHECK-SAME: %[[arg:[^:]+]]: !test.test_memref<[4], f64>
+// CHECK: %[[alloc:.+]] = memref.alloc() {alignment = 64 : i64} : memref<4xf64>
+// CHECK: %[[copy:.+]] = builtin.unrealized_conversion_cast %[[alloc]] : memref<4xf64> to !test.test_memref<[4], f64>
+// CHECK: %[[src:.+]] = builtin.unrealized_conversion_cast %[[arg]] : !test.test_memref<[4], f64> to memref<4xf64>
+// CHECK: %[[dst:.+]] = builtin.unrealized_conversion_cast %[[copy]] : !test.test_memref<[4], f64> to memref<4xf64>
+// CHECK: memref.copy %[[src]], %[[dst]]
+func.func @custom_types_copy_of_custom_buffer(%t: !test.test_tensor<[4], f64>)
+    -> (!test.test_tensor<[4], f64>, !test.test_tensor<[4], f64>) {
+  %0 = "test.dummy_tensor_op"(%t)
+    : (!test.test_tensor<[4], f64>) -> !test.test_tensor<[4], f64>
+  %1 = "test.dummy_tensor_op"(%t)
+    : (!test.test_tensor<[4], f64>) -> !test.test_tensor<[4], f64>
+  return %0, %1 : !test.test_tensor<[4], f64>, !test.test_tensor<[4], f64>
+}
+
+// -----
+
+// A copy of a buffer-like value with a dynamic extent has the extent of the
+// value it copies.
+
+// CHECK-LABEL: func.func @custom_types_copy_of_dynamic_custom_buffer(
+// CHECK-SAME: %[[arg:[^:]+]]: !test.test_memref<[-9223372036854775808], f64>
+// CHECK: %[[in:.+]] = builtin.unrealized_conversion_cast %[[arg]] : !test.test_memref<[-9223372036854775808], f64> to memref<?xf64>
+// CHECK: %[[dim:.+]] = memref.dim %[[in]]
+// CHECK: memref.alloc(%[[dim]]) {alignment = 64 : i64} : memref<?xf64>
+// CHECK: memref.copy
+func.func @custom_types_copy_of_dynamic_custom_buffer(
+    %t: !test.test_tensor<[-9223372036854775808], f64>)
+    -> (!test.test_tensor<[-9223372036854775808], f64>,
+        !test.test_tensor<[-9223372036854775808], f64>) {
+  %0 = "test.dummy_tensor_op"(%t)
+    : (!test.test_tensor<[-9223372036854775808], f64>)
+    -> !test.test_tensor<[-9223372036854775808], f64>
+  %1 = "test.dummy_tensor_op"(%t)
+    : (!test.test_tensor<[-9223372036854775808], f64>)
+    -> !test.test_tensor<[-9223372036854775808], f64>
+  return %0, %1 : !test.test_tensor<[-9223372036854775808], f64>,
+                  !test.test_tensor<[-9223372036854775808], f64>
+}
+
