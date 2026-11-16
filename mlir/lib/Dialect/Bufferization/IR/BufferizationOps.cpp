@@ -82,6 +82,41 @@ FailureOr<Value> mlir::bufferization::castOrReallocMemRefValue(
   return copy;
 }
 
+/// Erases, last first, the operations before the rewriter's insertion point
+/// back to `before`, the operation that preceded it when they were inserted
+/// (null for the start of the block).
+static void eraseInsertedSince(RewriterBase &rewriter, Operation *before) {
+  Block *block = rewriter.getInsertionBlock();
+  Block::iterator point = rewriter.getInsertionPoint();
+  while (point != block->begin() && &*std::prev(point) != before)
+    rewriter.eraseOp(&*std::prev(point));
+}
+
+FailureOr<Value> mlir::bufferization::castOrReallocBufferValue(
+    RewriterBase &rewriter, Value value, BufferLikeType type,
+    const BufferizationOptions &options) {
+  if (auto memrefType = dyn_cast<MemRefType>(type))
+    if (isa<MemRefType>(value.getType()))
+      return castOrReallocMemRefValue(rewriter, value, memrefType, options);
+  Location loc = value.getLoc();
+  Block::iterator point = rewriter.getInsertionPoint();
+  Operation *before = point == rewriter.getInsertionBlock()->begin()
+                          ? nullptr
+                          : &*std::prev(point);
+  FailureOr<Value> casted = options.castFn(rewriter, loc, type, value);
+  if (succeeded(casted))
+    return casted;
+  // A refused cast or copy may have built operations; they are removed.
+  eraseInsertedSince(rewriter, before);
+  FailureOr<Value> copy =
+      type.genAllocate(rewriter, loc, value, options.bufferAlignment);
+  if (succeeded(copy) &&
+      succeeded(options.memCpyFn(rewriter, loc, value, *copy)))
+    return copy;
+  eraseInsertedSince(rewriter, before);
+  return failure();
+}
+
 /// Try to fold to_buffer(to_tensor(x)). If x's type and the result type of the
 /// to_buffer op are different, a memref.cast is needed.
 LogicalResult mlir::bufferization::foldToBufferToTensorPair(
@@ -102,10 +137,10 @@ LogicalResult mlir::bufferization::foldToBufferToTensorPair(
 
   if (!llvm::isa<BaseMemRefType>(srcType) ||
       !llvm::isa<BaseMemRefType>(destType)) {
-    // Non-builtin case: the best is to try the user-provided cast.
-    auto replacement =
-        options.castFn(rewriter, bufferToTensor.getBuffer().getLoc(), destType,
-                       bufferToTensor.getBuffer());
+    // Non-builtin case: the user-provided cast, or a copy where it fails.
+    FailureOr<Value> replacement =
+        castOrReallocBufferValue(rewriter, bufferToTensor.getBuffer(),
+                                 cast<BufferLikeType>(destType), options);
     if (failed(replacement))
       return failure();
     rewriter.replaceOp(toBuffer, *replacement);

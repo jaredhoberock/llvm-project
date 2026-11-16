@@ -55,6 +55,17 @@ FailureOr<Value> castOrReallocMemRefValue(OpBuilder &b, Value value,
                                           MemRefType type,
                                           const BufferizationOptions &options);
 
+/// Casts the given buffer to the given buffer type. A ranked memref cast to a
+/// ranked memref type goes through `castOrReallocMemRefValue`. Any other
+/// buffer goes through the options' cast hook and, where that fails, is copied
+/// into a new buffer of `type` allocated by `type`.
+///
+/// This function returns `failure()` where the buffer can neither be cast nor
+/// copied, and then has removed whatever it inserted.
+FailureOr<Value> castOrReallocBufferValue(RewriterBase &rewriter, Value value,
+                                          BufferLikeType type,
+                                          const BufferizationOptions &options);
+
 /// Try to fold to_buffer(to_tensor(x)). If x's type and the result type of the
 /// to_buffer op are different, a memref.cast is needed.
 LogicalResult foldToBufferToTensorPair(RewriterBase &rewriter,

@@ -441,12 +441,15 @@ func.func @negative_input() -> tensor<?x?x?xf16> {
 
 // -----
 
-// A to_buffer of a to_tensor whose buffers are not memrefs is left as it is:
-// the default cast casts memrefs only.
+// A to_buffer of a to_tensor whose buffers are not memrefs is folded into the
+// cast the buffer's type builds.
 
 // CHECK-LABEL: func @to_buffer_of_to_tensor_buffer_like(
-//       CHECK:   bufferization.to_tensor
-//       CHECK:   bufferization.to_buffer
+//  CHECK-SAME:     %[[ARG:.*]]: !test.test_memref<[4], f32, strided<[1]>>)
+//       CHECK:   %[[M:.*]] = builtin.unrealized_conversion_cast %[[ARG]] : !test.test_memref<[4], f32, strided<[1]>> to memref<4xf32, strided<[1]>>
+//       CHECK:   %[[C:.*]] = memref.cast %[[M]] : memref<4xf32, strided<[1]>> to memref<4xf32>
+//       CHECK:   %[[R:.*]] = builtin.unrealized_conversion_cast %[[C]] : memref<4xf32> to !test.test_memref<[4], f32>
+//       CHECK:   return %[[R]]
 func.func @to_buffer_of_to_tensor_buffer_like(
     %m: !test.test_memref<[4], f32, strided<[1]>>)
     -> !test.test_memref<[4], f32> {
@@ -455,4 +458,44 @@ func.func @to_buffer_of_to_tensor_buffer_like(
   %b = bufferization.to_buffer %t
     : !test.test_tensor<[4], f32> to !test.test_memref<[4], f32>
   return %b : !test.test_memref<[4], f32>
+}
+
+// -----
+
+// Where the buffer's type cannot cast it for every value, a dynamic stride to a
+// static one, the fold copies it.
+
+// CHECK-LABEL: func @to_buffer_of_to_tensor_buffer_like_copy(
+//  CHECK-SAME:     %[[ARG:.*]]: !test.test_memref<[4], f32, strided<[?], offset: ?>>)
+//       CHECK:   %[[ALLOC:.*]] = memref.alloc() : memref<4xf32>
+//       CHECK:   %[[COPY:.*]] = builtin.unrealized_conversion_cast %[[ALLOC]] : memref<4xf32> to !test.test_memref<[4], f32>
+//       CHECK:   %[[SRC:.*]] = builtin.unrealized_conversion_cast %[[ARG]]
+//       CHECK:   memref.copy %[[SRC]], %[[ALLOC]]
+//       CHECK:   return %[[COPY]]
+func.func @to_buffer_of_to_tensor_buffer_like_copy(
+    %m: !test.test_memref<[4], f32, strided<[?], offset: ?>>)
+    -> !test.test_memref<[4], f32> {
+  %t = bufferization.to_tensor %m
+    : !test.test_memref<[4], f32, strided<[?], offset: ?>>
+      to !test.test_tensor<[4], f32>
+  %b = bufferization.to_buffer %t
+    : !test.test_tensor<[4], f32> to !test.test_memref<[4], f32>
+  return %b : !test.test_memref<[4], f32>
+}
+
+// -----
+
+// A pair that can be neither cast nor copied, a buffer that is not a memref
+// to a memref, is left as it is, and canonicalization converges.
+
+// CHECK-LABEL: func @to_buffer_of_to_tensor_buffer_like_to_memref(
+//       CHECK:   bufferization.to_tensor
+//       CHECK:   bufferization.to_buffer
+//   CHECK-NOT:   memref.alloc
+func.func @to_buffer_of_to_tensor_buffer_like_to_memref(
+    %m: !test.test_memref<[4], f32>) -> memref<4xf32> {
+  %t = bufferization.to_tensor %m
+    : !test.test_memref<[4], f32> to !test.test_tensor<[4], f32>
+  %b = bufferization.to_buffer %t : !test.test_tensor<[4], f32> to memref<4xf32>
+  return %b : memref<4xf32>
 }

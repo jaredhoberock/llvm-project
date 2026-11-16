@@ -69,9 +69,9 @@ def Bufferization_BufferLikeTypeInterface
 
     The `gen` methods build at the builder's insertion point, which a caller
     places in a block of the IR, so that a method may look at what stands
-    around it. `genAllocate` and `genCopy` fail where the type has no answer,
-    which is their default; a method that fails may have built operations, and
-    a caller that must leave the IR unchanged removes them.
+    around it. `genAllocate`, `genCopy` and `genCast` fail where the type has
+    no answer, which is their default; a method that fails may have built
+    operations, and a caller that must leave the IR unchanged removes them.
   }];
 
   let methods = [
@@ -153,6 +153,19 @@ def Bufferization_BufferLikeTypeInterface
       /*methodName=*/"genCopy",
       /*args=*/(ins "::mlir::OpBuilder &":$builder, "::mlir::Location":$loc,
                     "::mlir::Value":$source, "::mlir::Value":$destination),
+      /*methodBody=*/"",
+      /*defaultImplementation=*/"return ::mlir::failure();"
+    >,
+    InterfaceMethod<[{
+        Builds `buffer`, a value of this type, as a value of `resultType` that
+        is the same buffer. Succeeds only where the cast holds for every value
+        of this type, so that it cannot fail when the program runs; a caller
+        may copy the buffer where it fails.
+      }],
+      /*retTy=*/"::mlir::FailureOr<::mlir::Value>",
+      /*methodName=*/"genCast",
+      /*args=*/(ins "::mlir::OpBuilder &":$builder, "::mlir::Location":$loc,
+                    "::mlir::Value":$buffer, "::mlir::Type":$resultType),
       /*methodBody=*/"",
       /*defaultImplementation=*/"return ::mlir::failure();"
     >

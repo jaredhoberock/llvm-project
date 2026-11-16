@@ -481,12 +481,12 @@ def TestTensorType : Test_Type<"TestTensor",
 }
 
 // A buffer-like type that stands for the builtin memref of its shape, element
-// type and layout: it is deallocated, identified, allocated and copied as that
-// memref.
+// type and layout: it is deallocated, identified, allocated, copied and cast as
+// that memref.
 def TestMemrefType : Test_Type<"TestMemref",
     [DeclareTypeInterfaceMethods<Bufferization_BufferLikeTypeInterface,
         ["supportsDeallocation", "genFree", "genIdentity", "genAllocate",
-         "genCopy"]>,
+         "genCopy", "genCast"]>,
      ShapedTypeInterface]> {
   let mnemonic = "test_memref";
   let parameters = (ins

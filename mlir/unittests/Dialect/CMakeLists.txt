@@ -8,6 +8,7 @@ mlir_target_link_libraries(MLIRDialectTests
 
 add_subdirectory(AMDGPU)
 add_subdirectory(ArmSME)
+add_subdirectory(Bufferization)
 add_subdirectory(Index)
 add_subdirectory(Linalg)
 add_subdirectory(LLVMIR)

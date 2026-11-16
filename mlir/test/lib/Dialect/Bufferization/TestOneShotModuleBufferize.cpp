@@ -78,6 +78,10 @@ struct TestOneShotModuleBufferizePass
       llvm::cl::desc("Convert test tensors to builtin memrefs with dynamic "
                      "extents."),
       llvm::cl::init(false)};
+  Option<bool> defaultCast{
+      *this, "default-cast",
+      llvm::cl::desc("Cast buffers with the options' default cast."),
+      llvm::cl::init(false)};
 
   void runOnOperation() override {
 
@@ -159,9 +163,10 @@ struct TestOneShotModuleBufferizePass
       }
       return rhsLayout ? y : x;
     };
-    opt.castFn = [&](OpBuilder &b, Location loc, Type dest, Value value) {
-      return test::TestDummyCastOp::create(b, loc, dest, value).getResult();
-    };
+    if (!defaultCast)
+      opt.castFn = [&](OpBuilder &b, Location loc, Type dest, Value value) {
+        return test::TestDummyCastOp::create(b, loc, dest, value).getResult();
+      };
     // Function signature update only works with memref.cast. Disable it to
     // align behaviour for upstream and user casts.
     opt.inferFunctionResultLayout = false;

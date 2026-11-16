@@ -57,6 +57,31 @@ struct BuiltinTensorExternalModel
   }
 };
 
+/// Returns whether a `memref.cast` from `source` to `target` holds for every
+/// value of `source`: the two are cast compatible, and no dynamic extent,
+/// offset or stride of `source` is static in `target`.
+static bool castHoldsForEveryValue(MemRefType source, MemRefType target) {
+  // Unlike the test of `castOrReallocMemRefValue`, this one checks extents.
+  if (!memref::CastOp::areCastCompatible(source, target))
+    return false;
+  auto dynamicToStatic = [](int64_t a, int64_t b) {
+    return ShapedType::isDynamic(a) && ShapedType::isStatic(b);
+  };
+  for (auto [a, b] : llvm::zip(source.getShape(), target.getShape()))
+    if (dynamicToStatic(a, b))
+      return false;
+  int64_t sourceOffset, targetOffset;
+  SmallVector<int64_t> sourceStrides, targetStrides;
+  if (failed(source.getStridesAndOffset(sourceStrides, sourceOffset)) ||
+      failed(target.getStridesAndOffset(targetStrides, targetOffset)) ||
+      dynamicToStatic(sourceOffset, targetOffset))
+    return false;
+  for (auto [a, b] : llvm::zip(sourceStrides, targetStrides))
+    if (dynamicToStatic(a, b))
+      return false;
+  return true;
+}
+
 template <typename MemRef>
 struct BuiltinMemRefExternalModel
     : BufferLikeType::ExternalModel<BuiltinMemRefExternalModel<MemRef>,
@@ -113,6 +138,22 @@ struct BuiltinMemRefExternalModel
       return failure();
     memref::CopyOp::create(builder, loc, source, destination);
     return success();
+  }
+
+  /// A memref is cast to a ranked memref only from a ranked one, and to an
+  /// unranked one where the two are cast compatible.
+  FailureOr<Value> genCast(Type type, OpBuilder &builder, Location loc,
+                           Value buffer, Type resultType) const {
+    bool holds = false;
+    if (auto target = dyn_cast<MemRefType>(resultType)) {
+      auto source = dyn_cast<MemRefType>(type);
+      holds = source && castHoldsForEveryValue(source, target);
+    } else if (isa<UnrankedMemRefType>(resultType)) {
+      holds = memref::CastOp::areCastCompatible(type, resultType);
+    }
+    if (!holds)
+      return failure();
+    return memref::CastOp::create(builder, loc, resultType, buffer).getResult();
   }
 };
 } // namespace

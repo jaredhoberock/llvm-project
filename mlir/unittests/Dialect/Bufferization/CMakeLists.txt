@@ -1,0 +1,9 @@
+add_mlir_unittest(MLIRBufferizationTests
+  BufferLikeTypeTest.cpp
+)
+mlir_target_link_libraries(MLIRBufferizationTests
+  PRIVATE
+  MLIRBufferizationDialect
+  MLIRFuncDialect
+  MLIRMemRefDialect
+  )

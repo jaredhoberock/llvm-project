@@ -660,6 +660,24 @@ TestMemrefType::genAllocate(::mlir::OpBuilder &builder, ::mlir::Location loc,
       .genCopy(builder, loc, source, memref);
 }
 
+/// A test memref casts to another test memref as the memrefs they stand for do.
+::mlir::FailureOr<::mlir::Value>
+TestMemrefType::genCast(::mlir::OpBuilder &builder, ::mlir::Location loc,
+                        ::mlir::Value buffer, ::mlir::Type resultType) const {
+  auto resultTestType = dyn_cast<TestMemrefType>(resultType);
+  if (!resultTestType)
+    return failure();
+  Value memref = castToBuiltinMemRef(builder, loc, buffer);
+  FailureOr<Value> memrefCast =
+      cast<::mlir::bufferization::BufferLikeType>(memref.getType())
+          .genCast(builder, loc, memref, getBuiltinMemRefType(resultTestType));
+  if (failed(memrefCast))
+    return failure();
+  return UnrealizedConversionCastOp::create(builder, loc, resultType,
+                                            *memrefCast)
+      .getResult(0);
+}
+
 ::mlir::LogicalResult TestUnshapedType::verifyCompatibleBufferType(
     ::mlir::bufferization::BufferLikeType bufferType,
     ::llvm::function_ref<::mlir::InFlightDiagnostic()> emitError) const {

@@ -770,3 +770,22 @@ func.func @custom_types_copy_of_dynamic_custom_buffer(
                   !test.test_tensor<[-9223372036854775808], f64>
 }
 
+
+// -----
+
+// A call's operand whose buffer type differs from the callee's parameter is
+// cast by the options' cast.
+
+func.func private @custom_types_callee(!test.test_tensor<[4], f64>)
+
+// CHECK-LABEL: func.func @custom_types_call_operand_options_cast(
+// CHECK-SAME: %[[b:[^:]+]]: !test.test_memref<[4], f64, strided<[2]>>
+// CHECK: %[[cast:.+]] = test.dummy_cast_op %[[b]] : !test.test_memref<[4], f64, strided<[2]>> to !test.test_memref<[4], f64>
+// CHECK: call @custom_types_callee(%[[cast]])
+func.func @custom_types_call_operand_options_cast(
+    %b: !test.test_memref<[4], f64, strided<[2]>>) {
+  %tb = bufferization.to_tensor %b restrict writable
+    : !test.test_memref<[4], f64, strided<[2]>> to !test.test_tensor<[4], f64>
+  func.call @custom_types_callee(%tb) : (!test.test_tensor<[4], f64>) -> ()
+  return
+}

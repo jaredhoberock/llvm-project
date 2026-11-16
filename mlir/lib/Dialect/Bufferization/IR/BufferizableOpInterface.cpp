@@ -373,12 +373,14 @@ LogicalResult defaultCreateMemCpy(OpBuilder &b, Location loc, Value from,
   return cast<BufferLikeType>(to.getType()).genCopy(b, loc, from, to);
 }
 
-/// Create a `memref.cast` between two cast-compatible memrefs; refuse any
-/// other pair.
+/// Create a `memref.cast` between two cast-compatible memrefs, which may be
+/// checked when the program runs; refuse two memrefs that are not. Any other
+/// buffer is cast as its type says.
 FailureOr<Value> defaultCreateCast(OpBuilder &b, Location loc, Type dest,
                                    Value value) {
-  if (!isa<BaseMemRefType>(dest) || !isa<BaseMemRefType>(value.getType()) ||
-      !memref::CastOp::areCastCompatible(value.getType(), dest))
+  if (!isa<BaseMemRefType>(dest) || !isa<BaseMemRefType>(value.getType()))
+    return cast<BufferLikeType>(value.getType()).genCast(b, loc, value, dest);
+  if (!memref::CastOp::areCastCompatible(value.getType(), dest))
     return failure();
   return memref::CastOp::create(b, loc, dest, value).getResult();
 }

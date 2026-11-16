@@ -317,15 +317,17 @@ struct CallOpInterface
       // If the memref type of the callee fails, introduce an extra memref.cast
       // that will either canonicalize away or fail compilation until we can do
       // something better. Insert a reallocation + copy if it cannot be
-      // statically guaranteed that a direct cast would be valid.
+      // statically guaranteed that a direct cast would be valid. A buffer of
+      // another type is cast by the options' cast and copied where that fails.
       if (buffer.getType() != bufferType) {
-        auto memrefDstType = dyn_cast<MemRefType>(bufferType);
-        assert(memrefDstType &&
-               "buffer layout not supported on unranked tensors");
-        FailureOr<Value> replacement = bufferization::castOrReallocMemRefValue(
-            rewriter, buffer, memrefDstType, options);
+        FailureOr<Value> replacement = bufferization::castOrReallocBufferValue(
+            rewriter, buffer, cast<BufferLikeType>(bufferType), options);
         if (failed(replacement))
-          return failure();
+          return callOp->emitError()
+                 << "cannot cast or copy operand #"
+                 << opOperand.getOperandNumber() << " of type "
+                 << buffer.getType() << " to the callee's parameter type "
+                 << bufferType;
         buffer = *replacement;
       }
       newOperands.push_back(buffer);
