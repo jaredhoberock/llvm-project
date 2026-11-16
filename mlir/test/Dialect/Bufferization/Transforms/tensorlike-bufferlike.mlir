@@ -35,3 +35,16 @@ func.func @custom_memref(%t: !test.test_memref<[42], f32>) -> ()
 {
   return
 }
+
+// -----
+
+// A wrapper over a buffer-like type is buffer-like; a wrapper over i64 is not.
+
+// CHECK: func.func @custom_buffer_like_wrapper
+// CHECK-SAME: {found = {operand_0 = "is_buffer_like"}}
+func.func @custom_buffer_like_wrapper(
+    %b: !test.buffer_like_wrapper<!test.test_memref<[42], f32>>,
+    %i: !test.buffer_like_wrapper<i64>) -> ()
+{
+  return
+}

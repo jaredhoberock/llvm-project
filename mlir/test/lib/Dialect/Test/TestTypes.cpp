@@ -614,6 +614,10 @@ bool TestTensorLikeWrapperType::isTensorLike() const {
       .verifyCompatibleBufferType(bufferType, emitError);
 }
 
+bool TestBufferLikeWrapperType::isBufferLike() const {
+  return isa<::mlir::bufferization::BufferLikeType>(getInner());
+}
+
 //===----------------------------------------------------------------------===//
 // TestTypeNewlineAndIndent
 //===----------------------------------------------------------------------===//

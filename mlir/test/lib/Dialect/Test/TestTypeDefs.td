@@ -524,6 +524,15 @@ def TestTensorLikeWrapperType : Test_Type<"TestTensorLikeWrapper",
   let assemblyFormat = "`<` $inner `>`";
 }
 
+// A type that is buffer-like exactly when its inner type is.
+def TestBufferLikeWrapperType : Test_Type<"TestBufferLikeWrapper",
+    [DeclareTypeInterfaceMethods<Bufferization_BufferLikeTypeInterface,
+        ["isBufferLike"]>]> {
+  let mnemonic = "buffer_like_wrapper";
+  let parameters = (ins "mlir::Type":$inner);
+  let assemblyFormat = "`<` $inner `>`";
+}
+
 // Test implementation of an interface with methods specifying a
 // method body
 def TestBaseBody : Test_Type<"TestBaseBody",

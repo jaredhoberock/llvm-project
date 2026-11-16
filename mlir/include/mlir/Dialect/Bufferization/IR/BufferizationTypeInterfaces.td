@@ -63,8 +63,27 @@ def Bufferization_BufferLikeTypeInterface
     Indicates that this type is a buffer type (similarly to a MLIR builtin
     memref) for bufferization purposes.
 
-    The interface currently has no methods as it is used by types to opt into
-    being supported by the bufferization procedures.
+    `isBufferLike` refines whether a particular instance of the type is
+    buffer-like; `isa<BufferLikeType>` requires both a registered model and
+    this predicate.
+  }];
+
+  let methods = [
+    InterfaceMethod<[{
+        Returns whether this instance of the type is a buffer type for
+        bufferization purposes. A type overrides this when only some of its
+        instances are, for example when that depends on its parameters.
+      }],
+      /*retTy=*/"bool",
+      /*methodName=*/"isBufferLike",
+      /*args=*/(ins),
+      /*methodBody=*/"",
+      /*defaultImplementation=*/"return true;"
+    >
+  ];
+
+  let extraClassOf = [{
+    return $_type.isBufferLike();
   }];
 }
 
