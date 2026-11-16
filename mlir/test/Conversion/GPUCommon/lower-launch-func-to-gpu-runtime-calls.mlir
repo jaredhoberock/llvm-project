@@ -132,3 +132,25 @@ module attributes {gpu.container_module} {
     return
   }
 }
+
+// -----
+
+// A launch in the stream-based async model keeps its stream.
+module attributes {gpu.container_module} {
+  gpu.module @kernel_module [#nvvm.target] {
+    llvm.func @kernel() attributes {gpu.kernel} {
+      llvm.return
+    }
+  }
+
+  // CHECK-LABEL: func @stream_based_launch
+  //  CHECK-SAME: (%[[stream:.*]]: !llvm.ptr)
+  //       CHECK: gpu.launch_func <%[[stream]] : !llvm.ptr> @kernel_module::@kernel
+  func.func @stream_based_launch(%stream : !llvm.ptr) {
+    %c1 = arith.constant 1 : index
+    gpu.launch_func <%stream : !llvm.ptr> @kernel_module::@kernel
+        blocks in (%c1, %c1, %c1)
+        threads in (%c1, %c1, %c1)
+    return
+  }
+}

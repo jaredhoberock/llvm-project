@@ -998,7 +998,9 @@ LogicalResult LegalizeLaunchFuncOpPattern::matchAndRewrite(
 
   Location loc = launchOp.getLoc();
 
-  Value stream = Value();
+  // A launch in the stream-based async model runs on the stream it names; the
+  // verifier keeps such a launch from having dependencies or a token.
+  Value stream = adaptor.getAsyncObject();
   if (!adaptor.getAsyncDependencies().empty()) {
     stream = adaptor.getAsyncDependencies().front();
     // Synchronize additional async dependencies onto the primary stream using
