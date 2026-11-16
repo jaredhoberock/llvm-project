@@ -613,7 +613,11 @@ LogicalResult DeallocTensorOp::bufferize(RewriterBase &rewriter,
   FailureOr<Value> buffer = getBuffer(rewriter, getTensor(), options, state);
   if (failed(buffer))
     return failure();
-  memref::DeallocOp::create(rewriter, getLoc(), *buffer);
+  auto bufferType = cast<BufferLikeType>(buffer->getType());
+  if (!bufferType.supportsDeallocation())
+    return emitError() << "deallocating a buffer of type " << bufferType
+                       << " is not supported";
+  bufferType.genFree(rewriter, getLoc(), *buffer);
   rewriter.eraseOp(getOperation());
   return success();
 }

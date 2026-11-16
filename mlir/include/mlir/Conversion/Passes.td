@@ -279,8 +279,9 @@ def ConvertBufferizationToMemRefPass : Pass<"convert-bufferization-to-memref"> {
     In the current state, this pass only transforms a `bufferization.clone`
     operation into `memref.alloc` and `memref.copy` operations and
     `bufferization.dealloc` operations (the same way as the
-    `-bufferization-lower-deallocations` pass). The conversion of `clone`
-    operations is needed, since some clone operations could remain after
+    `-bufferization-lower-deallocations` pass, so a dealloc of a buffer that is
+    not a memref becomes the deallocation its type builds). The conversion of
+    `clone` operations is needed, since some clone operations could remain after
     applying several transformation processes. Currently, only `canonicalize`
     transforms clone operations or even eliminates them. This can lead to errors
     if any clone op survived after all conversion passes (starting from the

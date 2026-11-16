@@ -66,6 +66,10 @@ def Bufferization_BufferLikeTypeInterface
     `isBufferLike` refines whether a particular instance of the type is
     buffer-like; `isa<BufferLikeType>` requires both a registered model and
     this predicate.
+
+    The `gen` methods build at the builder's insertion point, which a caller
+    places in a block of the IR, so that a method may look at what stands
+    around it.
   }];
 
   let methods = [
@@ -79,6 +83,50 @@ def Bufferization_BufferLikeTypeInterface
       /*args=*/(ins),
       /*methodBody=*/"",
       /*defaultImplementation=*/"return true;"
+    >,
+    InterfaceMethod<[{
+        Returns whether this instance of the type says how its values are
+        deallocated and identified, by `genFree` and `genIdentity`, which may
+        be called only where this holds.
+      }],
+      /*retTy=*/"bool",
+      /*methodName=*/"supportsDeallocation",
+      /*args=*/(ins),
+      /*methodBody=*/"",
+      /*defaultImplementation=*/"return false;"
+    >,
+    InterfaceMethod<[{
+        Builds the deallocation of the allocation `buffer`, a value of this
+        type, belongs to. Where the type's values can be parts of an
+        allocation, `buffer` may be a part, and the whole allocation is
+        deallocated.
+      }],
+      /*retTy=*/"void",
+      /*methodName=*/"genFree",
+      /*args=*/(ins "::mlir::OpBuilder &":$builder, "::mlir::Location":$loc,
+                    "::mlir::Value":$buffer),
+      /*methodBody=*/"",
+      /*defaultImplementation=*/[{
+        llvm_unreachable("genFree not implemented");
+      }]
+    >,
+    InterfaceMethod<[{
+        Builds the identity of the allocation `buffer`, a value of this type,
+        belongs to: an `index`. Two values that one deallocation would release
+        have equal identities; values of different allocations have different
+        identities, except where deallocating either does nothing. Identities
+        are compared across buffer types, so a type whose values can belong to
+        an allocation of another type gives that type's identity; a builtin
+        memref's identity is its aligned pointer.
+      }],
+      /*retTy=*/"::mlir::Value",
+      /*methodName=*/"genIdentity",
+      /*args=*/(ins "::mlir::OpBuilder &":$builder, "::mlir::Location":$loc,
+                    "::mlir::Value":$buffer),
+      /*methodBody=*/"",
+      /*defaultImplementation=*/[{
+        llvm_unreachable("genIdentity not implemented");
+      }]
     >
   ];
 

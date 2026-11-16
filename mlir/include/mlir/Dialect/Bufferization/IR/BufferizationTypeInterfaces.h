@@ -15,6 +15,11 @@
 
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Types.h"
+#include "mlir/IR/Value.h"
+
+namespace mlir {
+class OpBuilder;
+} // namespace mlir
 
 namespace mlir::bufferization {
 struct BufferizationOptions;
