@@ -208,11 +208,13 @@ extern "C" MLIR_CUDA_WRAPPERS_EXPORT void mgpuStreamDestroy(CUstream stream) {
 
 extern "C" MLIR_CUDA_WRAPPERS_EXPORT void
 mgpuStreamSynchronize(CUstream stream) {
+  ScopedContext scopedContext;
   CUDA_REPORT_IF_ERROR(cuStreamSynchronize(stream));
 }
 
 extern "C" MLIR_CUDA_WRAPPERS_EXPORT void mgpuStreamWaitEvent(CUstream stream,
                                                               CUevent event) {
+  ScopedContext scopedContext;
   CUDA_REPORT_IF_ERROR(cuStreamWaitEvent(stream, event, /*flags=*/0));
 }
 
@@ -233,6 +235,7 @@ extern "C" MLIR_CUDA_WRAPPERS_EXPORT void mgpuEventSynchronize(CUevent event) {
 
 extern "C" MLIR_CUDA_WRAPPERS_EXPORT void mgpuEventRecord(CUevent event,
                                                           CUstream stream) {
+  ScopedContext scopedContext;
   CUDA_REPORT_IF_ERROR(cuEventRecord(event, stream));
 }
 
@@ -259,6 +262,7 @@ extern "C" MLIR_CUDA_WRAPPERS_EXPORT void mgpuMemFree(void *ptr,
 
 extern "C" MLIR_CUDA_WRAPPERS_EXPORT void
 mgpuMemcpy(void *dst, void *src, size_t sizeBytes, CUstream stream) {
+  ScopedContext scopedContext;
   CUDA_REPORT_IF_ERROR(cuMemcpyAsync(reinterpret_cast<CUdeviceptr>(dst),
                                      reinterpret_cast<CUdeviceptr>(src),
                                      sizeBytes, stream));
@@ -266,12 +270,14 @@ mgpuMemcpy(void *dst, void *src, size_t sizeBytes, CUstream stream) {
 
 extern "C" MLIR_CUDA_WRAPPERS_EXPORT void
 mgpuMemset32(void *dst, unsigned int value, size_t count, CUstream stream) {
+  ScopedContext scopedContext;
   CUDA_REPORT_IF_ERROR(cuMemsetD32Async(reinterpret_cast<CUdeviceptr>(dst),
                                         value, count, stream));
 }
 
 extern "C" MLIR_CUDA_WRAPPERS_EXPORT void
 mgpuMemset16(void *dst, unsigned short value, size_t count, CUstream stream) {
+  ScopedContext scopedContext;
   CUDA_REPORT_IF_ERROR(cuMemsetD16Async(reinterpret_cast<CUdeviceptr>(dst),
                                         value, count, stream));
 }
