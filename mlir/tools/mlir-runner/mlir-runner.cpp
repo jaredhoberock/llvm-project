@@ -12,6 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/Dialect/DLTI/DLTI.h"
 #include "mlir/ExecutionEngine/JitRunner.h"
 #include "mlir/ExecutionEngine/OptUtils.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -86,6 +87,9 @@ int main(int argc, char **argv) {
   llvm::InitializeNativeTargetAsmParser();
 
   mlir::DialectRegistry registry;
+  // Modules from the LLVM IR importer and the llvm-target-to-data-layout pass
+  // carry DLTI attributes.
+  registry.insert<mlir::DLTIDialect>();
   mlir::registerAllToLLVMIRTranslations(registry);
 
   mlir::JitRunnerConfig jitRunnerConfig;

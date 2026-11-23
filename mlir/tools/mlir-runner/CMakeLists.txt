@@ -14,6 +14,7 @@ llvm_update_compile_flags(mlir-runner)
 mlir_target_link_libraries(mlir-runner PRIVATE
   MLIRAnalysis
   MLIRBuiltinToLLVMIRTranslation
+  MLIRDLTIDialect
   MLIRIR
   MLIRLLVMDialect
   MLIRLLVMToLLVMIRTranslation
